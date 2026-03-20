@@ -149,9 +149,12 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 const containerStyle: React.CSSProperties = {
   width: "280px",
+  maxWidth: "90vw",
   height: "100%",
   background: "#0f0e17",
   borderLeft: "1px solid #2a2a4a",
   overflow: "auto",
   flexShrink: 0,
+  position: "relative",
+  zIndex: 10,
 };

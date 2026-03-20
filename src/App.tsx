@@ -5,6 +5,7 @@ import { ActivityFeed } from "./ui/ActivityFeed";
 import { Timeline } from "./ui/Timeline";
 import { Metrics } from "./ui/Metrics";
 import { Heatmap } from "./ui/Heatmap";
+import { TaskButton } from "./ui/TaskButton";
 import { useAgentStore } from "./data/AgentStore";
 import { startWSClient, stopWSClient } from "./data/ws-client";
 
@@ -13,6 +14,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
 
+  // Connect to BFF WebSocket for real-time agent data
   useEffect(() => {
     startWSClient();
     return () => stopWSClient();
@@ -21,33 +23,24 @@ export function App() {
   const selectedAgent = selectedId ? agents.find((a) => a.id === selectedId) ?? null : null;
 
   return (
-    <div style={{ width: "100vw", height: "100vh", overflow: "hidden", position: "relative" }}>
-      {/* Fullscreen canvas */}
-      <Scene
-        agents={agents}
-        onAgentClick={setSelectedId}
-        selectedZone={selectedZone}
-        onZoneClick={setSelectedZone}
-      />
+    <div style={{ display: "flex", width: "100vw", height: "100vh" }}>
+      {/* Canvas area */}
+      <div style={{ flex: 1, position: "relative" }}>
+        <Scene
+          agents={agents}
+          onAgentClick={setSelectedId}
+          selectedZone={selectedZone}
+          onZoneClick={setSelectedZone}
+        />
+        <Metrics />
+        <Timeline />
+        <Heatmap />
+        <TaskButton />
+        <ActivityFeed />
+      </div>
 
-      {/* Overlay UI */}
-      <Metrics />
-      <Timeline />
-      <Heatmap />
-      <ActivityFeed />
-
-      {/* Sidebar overlay (slides in from right) */}
-      {selectedAgent && (
-        <div style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 20,
-        }}>
-          <Sidebar agent={selectedAgent} onClose={() => setSelectedId(null)} />
-        </div>
-      )}
+      {/* Sidebar */}
+      <Sidebar agent={selectedAgent} onClose={() => setSelectedId(null)} />
     </div>
   );
 }
