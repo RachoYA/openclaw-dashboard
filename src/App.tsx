@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Scene, type SceneHandle } from "./engine/Scene";
 import { Sidebar } from "./ui/Sidebar";
+import { AgentPanel } from "./ui/AgentPanel";
 import { ActivityFeed } from "./ui/ActivityFeed";
 import { Timeline } from "./ui/Timeline";
 import { Metrics } from "./ui/Metrics";
@@ -48,28 +49,11 @@ export function App() {
       />
       <ActivityFeed compact={isMobile} />
 
-      {/* Sidebar: overlay on desktop, bottom sheet on mobile */}
-      {selectedAgent && (
-        <>
-          {/* Backdrop (mobile) */}
-          {isMobile && (
-            <div
-              onClick={() => setSelectedId(null)}
-              style={{
-                position: "absolute", inset: 0, zIndex: 19,
-                background: "rgba(0,0,0,0.3)",
-              }}
-            />
-          )}
-          <div style={isMobile ? mobileSheetStyle : desktopSidebarStyle}>
-            <Sidebar
-              agent={selectedAgent}
-              onClose={() => setSelectedId(null)}
-              compact={isMobile}
-            />
-          </div>
-        </>
-      )}
+      {/* Slide-in agent detail panel */}
+      <AgentPanel
+        agent={selectedAgent}
+        onClose={() => setSelectedId(null)}
+      />
     </div>
   );
 }
