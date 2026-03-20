@@ -1,24 +1,34 @@
 /**
  * BFF (Backend-for-Frontend) for OpenClaw Agent Dashboard.
  *
- * Polls `openclaw` CLI for agent/session status, transforms data into
- * AgentState objects, and broadcasts via WebSocket to the dashboard.
+ * Polls `openclaw` CLI for agent/session status, caches in Redis,
+ * publishes updates via Redis pub/sub, and serves WebSocket to dashboard.
  *
  * Env:
- *   PORT          — WebSocket server port (default 3101)
+ *   PORT          — HTTP + WebSocket server port (default 3101)
  *   POLL_INTERVAL — ms between status polls (default 10000)
  *   OPENCLAW_BIN  — path to openclaw binary (default "openclaw")
+ *   REDIS_URL     — Redis connection URL (default "redis://localhost:6379")
  */
 
 import { WebSocketServer } from "ws";
+import { createClient } from "redis";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createServer } from "node:http";
 
 const exec = promisify(execFile);
 
 const PORT = parseInt(process.env.PORT || "3101", 10);
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || "10000", 10);
 const OPENCLAW_BIN = process.env.OPENCLAW_BIN || "openclaw";
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+
+// Redis channels
+const CHANNEL_AGENTS = "dashboard:agents";
+const CACHE_KEY_AGENTS = "dashboard:agents:latest";
+const CACHE_KEY_EVENTS = "dashboard:events";
+const CACHE_TTL = 60; // seconds
 
 // Agent tile positions (fixed layout matching the isometric office)
 const AGENT_POSITIONS = {
@@ -30,29 +40,58 @@ const AGENT_POSITIONS = {
   techlead: { tileX: 4, tileY: 1, direction: "sw" },
 };
 
-// Agent display names
 const AGENT_NAMES = {
-  pm: "Артём",
-  dev: "Коля",
-  analyst: "Лена",
-  devops: "Дима",
-  qa: "Саша",
-  techlead: "Макс",
+  pm: "Артём", dev: "Коля", analyst: "Лена",
+  devops: "Дима", qa: "Саша", techlead: "Макс",
 };
 
 const AGENT_ROLES = {
-  pm: "PM",
-  dev: "Developer",
-  analyst: "Analyst",
-  devops: "DevOps",
-  qa: "QA",
-  techlead: "Tech Lead",
+  pm: "PM", dev: "Developer", analyst: "Analyst",
+  devops: "DevOps", qa: "QA", techlead: "Tech Lead",
 };
 
-/**
- * Parse `openclaw status` output to extract agent info.
- * Returns raw text — we parse the Agents and Sessions lines.
- */
+// ---------------------------------------------------------------------------
+// Redis setup
+// ---------------------------------------------------------------------------
+
+let redisPublisher = null;
+let redisSubscriber = null;
+let redisCache = null;
+let redisConnected = false;
+
+async function setupRedis() {
+  try {
+    redisPublisher = createClient({ url: REDIS_URL });
+    redisSubscriber = redisPublisher.duplicate();
+    redisCache = redisPublisher.duplicate();
+
+    redisPublisher.on("error", (err) => console.error("Redis pub error:", err.message));
+    redisSubscriber.on("error", (err) => console.error("Redis sub error:", err.message));
+    redisCache.on("error", (err) => console.error("Redis cache error:", err.message));
+
+    await Promise.all([
+      redisPublisher.connect(),
+      redisSubscriber.connect(),
+      redisCache.connect(),
+    ]);
+
+    redisConnected = true;
+    console.log("✅ Redis connected:", REDIS_URL);
+
+    // Subscribe to agent updates (for multi-instance scaling)
+    await redisSubscriber.subscribe(CHANNEL_AGENTS, (message) => {
+      broadcastWs(message);
+    });
+  } catch (err) {
+    console.warn("⚠️  Redis unavailable, running without cache:", err.message);
+    redisConnected = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OpenClaw polling
+// ---------------------------------------------------------------------------
+
 async function getOpenClawStatus() {
   try {
     const { stdout } = await exec(OPENCLAW_BIN, ["status"], {
@@ -66,9 +105,6 @@ async function getOpenClawStatus() {
   }
 }
 
-/**
- * Get active sessions with last messages via `openclaw sessions list`.
- */
 async function getSessionsList() {
   try {
     const { stdout } = await exec(
@@ -78,57 +114,31 @@ async function getSessionsList() {
     );
     return JSON.parse(stdout);
   } catch {
-    // Fallback: sessions command may not support --json
     return null;
   }
 }
 
-/**
- * Determine agent status from session activity.
- */
 function inferStatus(agentId, sessions, lastActiveSeconds) {
   if (lastActiveSeconds === null || lastActiveSeconds > 1800) return "sleeping";
   if (lastActiveSeconds > 300) return "idle";
-
-  // Check if agent has recent inter-agent messages
   const hasRecentMessage = sessions?.some(
     (s) => s.key?.includes(agentId) && s.lastMessageAge < 60
   );
   if (hasRecentMessage) return "talking";
-
   return "working";
 }
 
-/**
- * Parse heartbeat line from status output.
- * Example: "1h (pm), disabled (analyst), disabled (dev), ..."
- */
 function parseHeartbeat(statusText) {
   const match = statusText?.match(/Heartbeat\s*│\s*(.+)/);
   if (!match) return {};
-
   const result = {};
-  const parts = match[1].split(",").map((s) => s.trim());
-  for (const part of parts) {
+  for (const part of match[1].split(",").map((s) => s.trim())) {
     const m = part.match(/(.+?)\s*\((\w+)\)/);
-    if (m) {
-      result[m[2]] = m[1].trim() !== "disabled";
-    }
+    if (m) result[m[2]] = m[1].trim() !== "disabled";
   }
   return result;
 }
 
-/**
- * Parse sessions count from status output.
- */
-function parseSessionsActive(statusText) {
-  const match = statusText?.match(/Sessions\s*│\s*(\d+)\s*active/);
-  return match ? parseInt(match[1], 10) : 0;
-}
-
-/**
- * Build AgentState[] from OpenClaw data.
- */
 async function buildAgentStates() {
   const [statusText, sessions] = await Promise.all([
     getOpenClawStatus(),
@@ -141,7 +151,6 @@ async function buildAgentStates() {
   for (const [id, pos] of Object.entries(AGENT_POSITIONS)) {
     const isActive = heartbeats[id] !== false;
     const lastActiveSeconds = isActive ? Math.floor(Math.random() * 120) : 9999;
-
     const status = inferStatus(id, sessions, isActive ? lastActiveSeconds : null);
 
     agents.push({
@@ -149,8 +158,8 @@ async function buildAgentStates() {
       name: AGENT_NAMES[id] || id,
       role: AGENT_ROLES[id] || "Agent",
       status,
-      currentTask: null, // TODO: extract from session history
-      lastMessage: null, // TODO: extract from session last message
+      currentTask: null,
+      lastMessage: null,
       lastActiveAt: isActive ? new Date().toISOString() : null,
       tileX: pos.tileX,
       tileY: pos.tileY,
@@ -163,19 +172,79 @@ async function buildAgentStates() {
 }
 
 // ---------------------------------------------------------------------------
-// WebSocket server
+// Event log (stored in Redis list, last 100 events)
 // ---------------------------------------------------------------------------
 
-const wss = new WebSocketServer({ port: PORT });
+async function logEvent(event) {
+  if (!redisConnected) return;
+  try {
+    const entry = JSON.stringify({ ...event, timestamp: new Date().toISOString() });
+    await redisCache.lPush(CACHE_KEY_EVENTS, entry);
+    await redisCache.lTrim(CACHE_KEY_EVENTS, 0, 99);
+  } catch (err) {
+    console.error("Failed to log event:", err.message);
+  }
+}
+
+async function getRecentEvents(count = 20) {
+  if (!redisConnected) return [];
+  try {
+    const raw = await redisCache.lRange(CACHE_KEY_EVENTS, 0, count - 1);
+    return raw.map((r) => JSON.parse(r));
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP server (health endpoint) + WebSocket
+// ---------------------------------------------------------------------------
+
+const httpServer = createServer((req, res) => {
+  if (req.url === "/health") {
+    const health = {
+      status: "healthy",
+      redis: redisConnected,
+      agents: latestState.length,
+      uptime: Math.floor(process.uptime()),
+    };
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(health));
+    return;
+  }
+
+  // Recent events endpoint
+  if (req.url === "/events") {
+    getRecentEvents().then((events) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(events));
+    });
+    return;
+  }
+
+  res.writeHead(404);
+  res.end("Not Found");
+});
+
+const wss = new WebSocketServer({ server: httpServer });
 let latestState = [];
 
-console.log(`🎮 Dashboard BFF starting on ws://localhost:${PORT}`);
-console.log(`   Polling OpenClaw every ${POLL_INTERVAL / 1000}s`);
-
-wss.on("connection", (ws) => {
+wss.on("connection", async (ws) => {
   console.log("Client connected");
 
-  // Send current state immediately
+  // Try to serve from Redis cache first
+  if (redisConnected) {
+    try {
+      const cached = await redisCache.get(CACHE_KEY_AGENTS);
+      if (cached) {
+        ws.send(cached);
+        ws.on("close", () => console.log("Client disconnected"));
+        return;
+      }
+    } catch {}
+  }
+
+  // Fallback to in-memory state
   if (latestState.length > 0) {
     ws.send(JSON.stringify({ type: "agents", data: latestState }));
   }
@@ -183,27 +252,69 @@ wss.on("connection", (ws) => {
   ws.on("close", () => console.log("Client disconnected"));
 });
 
-function broadcast(data) {
-  const msg = JSON.stringify(data);
+function broadcastWs(message) {
   for (const client of wss.clients) {
     if (client.readyState === 1) {
-      client.send(msg);
+      client.send(typeof message === "string" ? message : JSON.stringify(message));
     }
   }
 }
 
+// ---------------------------------------------------------------------------
 // Poll loop
+// ---------------------------------------------------------------------------
+
+let previousStatuses = {};
+
 async function poll() {
   try {
     latestState = await buildAgentStates();
-    broadcast({ type: "agents", data: latestState });
+    const payload = { type: "agents", data: latestState };
+    const payloadStr = JSON.stringify(payload);
+
+    // Cache in Redis
+    if (redisConnected) {
+      await redisCache.set(CACHE_KEY_AGENTS, payloadStr, { EX: CACHE_TTL });
+      await redisPublisher.publish(CHANNEL_AGENTS, payloadStr);
+    } else {
+      // No Redis — broadcast directly
+      broadcastWs(payloadStr);
+    }
+
+    // Detect status changes and log events
+    for (const agent of latestState) {
+      const prev = previousStatuses[agent.id];
+      if (prev && prev !== agent.status) {
+        await logEvent({
+          type: "status_change",
+          agentId: agent.id,
+          agentName: agent.name,
+          from: prev,
+          to: agent.status,
+        });
+      }
+      previousStatuses[agent.id] = agent.status;
+    }
   } catch (err) {
     console.error("Poll error:", err.message);
   }
 }
 
-// Initial poll + interval
+// ---------------------------------------------------------------------------
+// Startup
+// ---------------------------------------------------------------------------
+
+console.log(`🎮 Dashboard BFF starting on http://localhost:${PORT}`);
+console.log(`   Polling OpenClaw every ${POLL_INTERVAL / 1000}s`);
+console.log(`   Redis: ${REDIS_URL}`);
+
+await setupRedis();
 await poll();
 setInterval(poll, POLL_INTERVAL);
 
-console.log(`✅ BFF running. ${latestState.length} agents tracked.`);
+httpServer.listen(PORT, () => {
+  console.log(`✅ BFF running. ${latestState.length} agents tracked.`);
+  console.log(`   Health: http://localhost:${PORT}/health`);
+  console.log(`   Events: http://localhost:${PORT}/events`);
+  console.log(`   WS:     ws://localhost:${PORT}`);
+});

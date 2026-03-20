@@ -17,7 +17,23 @@ services:
       start_period: 10s
       retries: 3
 
-  # BFF service — polls OpenClaw, serves agent state via WebSocket
+  # Redis — pub/sub + caching for real-time agent state
+  redis:
+    image: redis:7-alpine
+    container_name: openclaw-dashboard-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6390}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+
+  # BFF service — polls OpenClaw, publishes to Redis, serves WebSocket
   bff:
     build:
       context: ./bff
@@ -29,3 +45,16 @@ services:
       PORT: 3101
       POLL_INTERVAL: ${POLL_INTERVAL:-10000}
       OPENCLAW_BIN: ${OPENCLAW_BIN:-openclaw}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3101/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  redis-data:
