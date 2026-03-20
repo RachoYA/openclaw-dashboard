@@ -7,6 +7,7 @@ import { Metrics } from "./ui/Metrics";
 import { Heatmap } from "./ui/Heatmap";
 import { TaskButton } from "./ui/TaskButton";
 import { ZoomControls } from "./ui/ZoomControls";
+import { ConnectionBadge } from "./ui/ConnectionBadge";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useAgentStore } from "./data/AgentStore";
 import { startWSClient, stopWSClient } from "./data/ws-client";
@@ -48,6 +49,7 @@ export function App() {
       />
 
       {/* Overlay UI */}
+      <ConnectionBadge />
       {!isMobile && <Metrics />}
       {!isMobile && <Timeline />}
       {!isMobile && <Heatmap />}
