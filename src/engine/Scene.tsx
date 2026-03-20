@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import type { AgentState } from "@/data/types";
 import { tileToScreen, TILE_WIDTH, TILE_HEIGHT } from "./isometric";
 import { getSprite, SPRITE_SIZE } from "./SpriteGenerator";
@@ -29,19 +29,29 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
   const particlesRef = useRef<MessageParticle[]>([]);
   const lastParticleTime = useRef(0);
 
-  // Zoom & pan state
-  const [zoom, setZoom] = useState(1);
+  // All mutable state as refs to avoid stale closures in render loop
+  const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
-  const dragRef = useRef({ dragging: false, startX: 0, startY: 0, panStartX: 0, panStartY: 0 });
+  const dragRef = useRef({
+    active: false,
+    didMove: false,
+    startX: 0, startY: 0,
+    panStartX: 0, panStartY: 0,
+  });
 
-  // Day/night cycle
-  const getDayPhase = useCallback(() => {
+  // Keep props in refs for render loop
+  const agentsRef = useRef(agents);
+  agentsRef.current = agents;
+  const selectedZoneRef = useRef(selectedZone);
+  selectedZoneRef.current = selectedZone;
+
+  const getDayPhase = () => {
     const hour = new Date().getHours();
     if (hour >= 6 && hour < 9) return "dawn";
     if (hour >= 9 && hour < 17) return "day";
     if (hour >= 17 && hour < 20) return "dusk";
     return "night";
-  }, []);
+  };
 
   const resize = useCallback(() => {
     const canvas = canvasRef.current;
@@ -56,6 +66,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     if (ctx) ctx.scale(dpr, dpr);
   }, []);
 
+  // --- Render loop (uses refs, no stale closures) ---
   const render = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -67,13 +78,18 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     const H = canvas.height / dpr;
     const t = performance.now();
     const phase = getDayPhase();
+    const zoom = zoomRef.current;
+    const agents = agentsRef.current;
+    const selZone = selectedZoneRef.current;
 
     const baseOffsetX = W / 2 + panRef.current.x;
-    const baseOffsetY = 100 + panRef.current.y;
+    const baseOffsetY = H / 2 - 50 + panRef.current.y;
 
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // reset
     ctx.clearRect(0, 0, W, H);
 
-    // Save and apply zoom
+    // Apply zoom centered on screen
     ctx.save();
     ctx.translate(W / 2, H / 2);
     ctx.scale(zoom, zoom);
@@ -82,7 +98,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     const offsetX = baseOffsetX;
     const offsetY = baseOffsetY;
 
-    // Background gradient based on day phase
+    // --- Background ---
     const gradColors: Record<string, [string, string]> = {
       dawn: ["#1a0a2e", "#2d1545"],
       day: ["#0f0e17", "#1a1a2e"],
@@ -96,12 +112,9 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     ctx.fillStyle = grad;
     ctx.fillRect(-W, -H, W * 3, H * 3);
 
-    // Night overlay
     if (phase === "night") {
       ctx.fillStyle = "rgba(0, 0, 20, 0.3)";
       ctx.fillRect(-W, -H, W * 3, H * 3);
-
-      // Stars
       ctx.fillStyle = "#fff";
       for (let i = 0; i < 30; i++) {
         const sx = (Math.sin(i * 127.1) * 0.5 + 0.5) * W;
@@ -112,14 +125,12 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       ctx.globalAlpha = 1;
     }
 
-    // Dawn/dusk glow
     if (phase === "dawn" || phase === "dusk") {
-      const glowColor = phase === "dawn" ? "rgba(255, 137, 6, 0.06)" : "rgba(229, 49, 112, 0.06)";
-      ctx.fillStyle = glowColor;
+      ctx.fillStyle = phase === "dawn" ? "rgba(255, 137, 6, 0.06)" : "rgba(229, 49, 112, 0.06)";
       ctx.fillRect(-W, -H, W * 3, H * 3);
     }
 
-    // --- Floor tiles with zone colors ---
+    // --- Floor tiles ---
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const { x, y } = tileToScreen(col, row);
@@ -140,23 +151,22 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
 
         if (zone) {
           ctx.fillStyle = isLight ? zone.floorColor : zone.floorColorAlt;
-          // Highlight selected zone
-          if (selectedZone === zone.id) {
+          if (selZone === zone.id) {
             ctx.fillStyle = isLight ? "#2a1f5a" : "#332466";
           }
         } else {
           ctx.fillStyle = isLight ? "#1a1a2e" : "#16213e";
         }
         ctx.fill();
-        ctx.strokeStyle = selectedZone && zone?.id === selectedZone ? "#7f5af0" : "#2a2a4a";
-        ctx.lineWidth = selectedZone && zone?.id === selectedZone ? 1 : 0.5;
+        ctx.strokeStyle = selZone && zone?.id === selZone ? "#7f5af0" : "#2a2a4a";
+        ctx.lineWidth = selZone && zone?.id === selZone ? 1 : 0.5;
         ctx.stroke();
       }
     }
 
     // --- Zone labels ---
     for (const zone of OFFICE_ZONES) {
-      drawZoneLabel(ctx, zone, offsetX, offsetY, selectedZone === zone.id);
+      drawZoneLabel(ctx, zone, offsetX, offsetY, selZone === zone.id);
     }
 
     // --- Zone furniture ---
@@ -166,22 +176,21 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       for (const item of zone.furniture) {
         const { x, y } = tileToScreen(item.col, item.row);
         ctx.font = "16px serif";
-        ctx.globalAlpha = selectedZone && selectedZone !== zone.id ? 0.3 : 0.8;
+        ctx.globalAlpha = selZone && selZone !== zone.id ? 0.3 : 0.8;
         ctx.fillText(item.emoji, x + offsetX, y + offsetY - 8);
       }
     }
     ctx.globalAlpha = 1;
 
-    // --- Desks at agent positions ---
+    // --- Desks ---
     for (const agent of agents) {
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
       const sx = x + offsetX;
       const sy = y + offsetY;
 
-      // Dim if zone filter active and agent not in selected zone
-      if (selectedZone) {
+      if (selZone) {
         const agentZone = getZoneAt(agent.tileX, agent.tileY);
-        if (agentZone?.id !== selectedZone) ctx.globalAlpha = 0.25;
+        if (agentZone?.id !== selZone) ctx.globalAlpha = 0.25;
       }
 
       ctx.fillStyle = "#3d2b1f";
@@ -203,7 +212,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       ctx.globalAlpha = 1;
     }
 
-    // --- Agents ---
+    // --- Agents (sorted by depth) ---
     const sortedAgents = [...agents].sort((a, b) => a.tileY - b.tileY || a.tileX - b.tileX);
 
     for (const agent of sortedAgents) {
@@ -211,12 +220,9 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       const sx = x + offsetX;
       const sy = y + offsetY;
 
-      // Dim if filtered
-      if (selectedZone) {
+      if (selZone) {
         const agentZone = getZoneAt(agent.tileX, agent.tileY);
-        if (agentZone?.id !== selectedZone) {
-          ctx.globalAlpha = 0.2;
-        }
+        if (agentZone?.id !== selZone) ctx.globalAlpha = 0.2;
       }
 
       const isActive = agent.status !== "idle" && agent.status !== "sleeping";
@@ -226,7 +232,6 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       const breathe = Math.sin(t * 0.002 + agent.tileX * 1.5 + agent.tileY) * 2;
       const agentY = sy - SPRITE_SIZE - 4 + bob + breathe;
 
-      // Night: dim sleeping agents more
       if (phase === "night" && agent.status === "sleeping") {
         ctx.globalAlpha = Math.min(ctx.globalAlpha, 0.4);
       }
@@ -262,7 +267,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
         ctx.globalAlpha = Math.min(ctx.globalAlpha, pulse);
         ctx.lineWidth = 1.5;
         ctx.stroke();
-        ctx.globalAlpha = selectedZone ? (getZoneAt(agent.tileX, agent.tileY)?.id === selectedZone ? 1 : 0.2) : 1;
+        ctx.globalAlpha = selZone ? (getZoneAt(agent.tileX, agent.tileY)?.id === selZone ? 1 : 0.2) : 1;
       }
 
       // Animation
@@ -365,65 +370,78 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     ctx.fillStyle = "#525272";
     ctx.fillText(new Date().toLocaleTimeString("ru"), W - 20, 32);
 
-    // Zoom indicator
     if (zoom !== 1) {
       ctx.font = "11px -apple-system, sans-serif";
       ctx.fillStyle = "#525272";
       ctx.fillText(`${Math.round(zoom * 100)}%`, W - 20, 50);
     }
 
+    ctx.restore(); // undo setTransform
+
     frameRef.current = requestAnimationFrame(render);
-  }, [agents, zoom, getDayPhase, selectedZone]);
+  }, []); // no deps — uses refs
 
   // --- Zoom via wheel ---
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
-    setZoom((z) => Math.min(2.5, Math.max(0.5, z - e.deltaY * 0.001)));
+    zoomRef.current = Math.min(2.5, Math.max(0.4, zoomRef.current - e.deltaY * 0.001));
   }, []);
 
-  // --- Pan via drag ---
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 1 || e.shiftKey) { // middle click or shift+drag
-      dragRef.current = { dragging: true, startX: e.clientX, startY: e.clientY, panStartX: panRef.current.x, panStartY: panRef.current.y };
+  // --- Pan via drag (LEFT BUTTON, no modifier needed) ---
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = {
+      active: true,
+      didMove: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      panStartX: panRef.current.x,
+      panStartY: panRef.current.y,
+    };
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      d.didMove = true;
+      panRef.current.x = d.panStartX + dx / zoomRef.current;
+      panRef.current.y = d.panStartY + dy / zoomRef.current;
     }
   }, []);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (dragRef.current.dragging) {
-      panRef.current.x = dragRef.current.panStartX + (e.clientX - dragRef.current.startX) / zoom;
-      panRef.current.y = dragRef.current.panStartY + (e.clientY - dragRef.current.startY) / zoom;
-    }
-  }, [zoom]);
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    const d = dragRef.current;
+    d.active = false;
 
-  const handleMouseUp = useCallback(() => {
-    dragRef.current.dragging = false;
-  }, []);
-
-  // --- Click → agent or zone ---
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (dragRef.current.dragging) return;
+    // If it was a click (not drag), detect agent/zone
+    if (!d.didMove) {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
       const W = canvas.width / dpr;
+      const H = canvas.height / dpr;
+      const zoom = zoomRef.current;
 
-      // Reverse zoom transform
+      // Reverse zoom+pan transform
       const rawX = e.clientX - rect.left;
       const rawY = e.clientY - rect.top;
       const mx = (rawX - W / 2) / zoom + W / 2;
-      const my = (rawY - (canvas.height / dpr) / 2) / zoom + (canvas.height / dpr) / 2;
+      const my = (rawY - H / 2) / zoom + H / 2;
 
       const offsetX = W / 2 + panRef.current.x;
-      const offsetY = 100 + panRef.current.y;
+      const offsetY = H / 2 - 50 + panRef.current.y;
 
-      // Check agents first
-      for (const agent of agents) {
+      // Check agents
+      const currentAgents = agentsRef.current;
+      for (const agent of currentAgents) {
         const { x, y } = tileToScreen(agent.tileX, agent.tileY);
         const sx = x + offsetX;
         const sy = y + offsetY - SPRITE_SIZE / 2;
-        if (Math.abs(mx - sx) < 20 && Math.abs(my - sy) < 24) {
+        if (Math.abs(mx - sx) < 24 && Math.abs(my - sy) < 28) {
           onAgentClick(agent.id);
           return;
         }
@@ -431,6 +449,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
 
       // Check zones
       if (onZoneClick) {
+        const curZone = selectedZoneRef.current;
         for (const zone of OFFICE_ZONES) {
           const centerCol = (zone.col1 + zone.col2) / 2;
           const centerRow = (zone.row1 + zone.row2) / 2;
@@ -440,16 +459,14 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
           const zoneW = (zone.col2 - zone.col1 + 1) * TILE_WIDTH / 2;
           const zoneH = (zone.row2 - zone.row1 + 1) * TILE_HEIGHT / 2;
           if (Math.abs(mx - sx) < zoneW && Math.abs(my - sy) < zoneH) {
-            onZoneClick(selectedZone === zone.id ? null : zone.id);
+            onZoneClick(curZone === zone.id ? null : zone.id);
             return;
           }
         }
-        // Click on empty space — deselect
         onZoneClick(null);
       }
-    },
-    [agents, onAgentClick, onZoneClick, zoom, selectedZone],
-  );
+    }
+  }, [onAgentClick, onZoneClick]);
 
   useEffect(() => {
     resize();
@@ -465,15 +482,14 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
   }, [resize, render, handleWheel]);
 
   return (
-    <div ref={containerRef} style={{ width: "100%", height: "100%" }}>
+    <div ref={containerRef} style={{ position: "absolute", inset: 0, touchAction: "none" }}>
       <canvas
         ref={canvasRef}
-        onClick={handleClick}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        style={{ display: "block", cursor: dragRef.current.dragging ? "grabbing" : "pointer" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        style={{ display: "block", width: "100%", height: "100%", cursor: "grab" }}
       />
     </div>
   );
