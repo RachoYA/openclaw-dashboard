@@ -23,6 +23,8 @@ const PORT = parseInt(process.env.PORT || "3101", 10);
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || "10000", 10);
 const OPENCLAW_BIN = process.env.OPENCLAW_BIN || "openclaw";
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
+const GITHUB_REPOS = (process.env.GITHUB_REPOS || "RachoYA/ventMaind,RachoYA/openclaw-dashboard").split(",");
 
 // Redis channels
 const CHANNEL_AGENTS = "dashboard:agents";
@@ -382,6 +384,107 @@ async function getRecentEvents(count = 20) {
 // HTTP server (health endpoint) + WebSocket
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// GitHub API — real counters (PRs, issues, commits)
+// ---------------------------------------------------------------------------
+
+const ghHeaders = {
+  "Accept": "application/vnd.github+json",
+  "User-Agent": "openclaw-dashboard-bff",
+  ...(GITHUB_TOKEN ? { "Authorization": `Bearer ${GITHUB_TOKEN}` } : {}),
+};
+
+let cachedMetrics = null;
+let metricsLastFetch = 0;
+const METRICS_CACHE_MS = 60000; // Cache metrics for 60s
+
+async function fetchGitHub(path) {
+  try {
+    const res = await fetch(`https://api.github.com${path}`, { headers: ghHeaders });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function getGitHubMetrics() {
+  const metrics = { openPRs: 0, mergedPRs24h: 0, openIssues: 0, closedIssues24h: 0, commits24h: 0 };
+
+  for (const repo of GITHUB_REPOS) {
+    const r = repo.trim();
+    if (!r) continue;
+
+    // Open PRs
+    const prs = await fetchGitHub(`/repos/${r}/pulls?state=open&per_page=100`);
+    if (prs) metrics.openPRs += prs.length;
+
+    // Merged PRs in last 24h
+    const closedPrs = await fetchGitHub(`/repos/${r}/pulls?state=closed&sort=updated&direction=desc&per_page=30`);
+    if (closedPrs) {
+      const dayAgo = Date.now() - 86400000;
+      metrics.mergedPRs24h += closedPrs.filter(
+        (p) => p.merged_at && new Date(p.merged_at).getTime() > dayAgo
+      ).length;
+    }
+
+    // Open issues (bugs)
+    const issues = await fetchGitHub(`/repos/${r}/issues?state=open&labels=bug&per_page=100`);
+    if (issues) metrics.openIssues += issues.length;
+
+    // Closed issues in last 24h
+    const closedIssues = await fetchGitHub(`/repos/${r}/issues?state=closed&sort=updated&direction=desc&per_page=30`);
+    if (closedIssues) {
+      const dayAgo = Date.now() - 86400000;
+      metrics.closedIssues24h += closedIssues.filter(
+        (i) => i.closed_at && new Date(i.closed_at).getTime() > dayAgo
+      ).length;
+    }
+
+    // Commits in last 24h
+    const since = new Date(Date.now() - 86400000).toISOString();
+    const commits = await fetchGitHub(`/repos/${r}/commits?since=${since}&per_page=100`);
+    if (commits) metrics.commits24h += commits.length;
+  }
+
+  return metrics;
+}
+
+async function getMetrics() {
+  const now = Date.now();
+  if (cachedMetrics && now - metricsLastFetch < METRICS_CACHE_MS) {
+    return cachedMetrics;
+  }
+
+  const [ghMetrics, statusText] = await Promise.all([
+    getGitHubMetrics(),
+    getOpenClawStatus(),
+  ]);
+
+  // Parse active agents from status
+  const sessionsMatch = statusText?.match(/(\d+)\s*active/);
+  const activeAgents = latestState.filter((a) => a.status !== "sleeping" && a.status !== "idle").length;
+
+  cachedMetrics = {
+    agents: {
+      total: latestState.length,
+      active: activeAgents,
+    },
+    github: ghMetrics,
+    sessions: {
+      active: sessionsMatch ? parseInt(sessionsMatch[1], 10) : 0,
+    },
+    timestamp: new Date().toISOString(),
+  };
+  metricsLastFetch = now;
+  return cachedMetrics;
+}
+
+// ---------------------------------------------------------------------------
+// Real events from status changes (NOT mock/random)
+// Status changes are logged in Redis by the poll loop (logEvent)
+// ---------------------------------------------------------------------------
+
 const httpServer = createServer((req, res) => {
   if (req.url === "/health") {
     const health = {
@@ -390,7 +493,7 @@ const httpServer = createServer((req, res) => {
       agents: latestState.length,
       uptime: Math.floor(process.uptime()),
     };
-    res.writeHead(200, { "Content-Type": "application/json" });
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
     res.end(JSON.stringify(health));
     return;
   }
@@ -398,8 +501,17 @@ const httpServer = createServer((req, res) => {
   // Recent events endpoint
   if (req.url === "/events") {
     getRecentEvents().then((events) => {
-      res.writeHead(200, { "Content-Type": "application/json" });
+      res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
       res.end(JSON.stringify(events));
+    });
+    return;
+  }
+
+  // Real metrics from GitHub + OpenClaw
+  if (req.url === "/metrics") {
+    getMetrics().then((metrics) => {
+      res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Origin": "*" });
+      res.end(JSON.stringify(metrics));
     });
     return;
   }
@@ -410,6 +522,7 @@ const httpServer = createServer((req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer });
 let latestState = [];
+let pollCount = 0;
 
 wss.on("connection", async (ws) => {
   console.log("Client connected");
@@ -452,6 +565,15 @@ async function poll() {
   try {
     latestState = await buildAgentStates();
     const payload = { type: "agents", data: latestState };
+
+    // Broadcast metrics every ~60s (every 6th poll at 10s interval)
+    if (pollCount % 6 === 0) {
+      getMetrics().then((m) => {
+        const metricsMsg = JSON.stringify({ type: "metrics", data: m });
+        broadcastWs(metricsMsg);
+      }).catch(() => {});
+    }
+    pollCount++;
     const payloadStr = JSON.stringify(payload);
 
     // Cache in Redis
