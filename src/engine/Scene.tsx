@@ -5,6 +5,10 @@ import { getSprite, SPRITE_SIZE } from "./SpriteGenerator";
 import { ANIMATIONS } from "./Animations";
 import { type MessageParticle, createParticle, updateParticle, drawParticle } from "./MessageParticle";
 import { OFFICE_ZONES, getZoneAt, drawZoneLabel } from "./OfficeZones";
+import {
+  preloadSprites, drawAgentSprite, drawFurniture, drawActionIcon,
+  drawSpeechBubble, drawStatusIcon, SPRITE_W, SPRITE_H,
+} from "./SpriteLoader";
 
 const GRID_COLS = 10;
 const GRID_ROWS = 8;
@@ -149,15 +153,18 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       }
     }
 
-    // Zone labels + furniture
+    // Zone labels + furniture (PNG sprites with emoji fallback)
     for (const zone of OFFICE_ZONES) drawZoneLabel(ctx, zone, offsetX, offsetY, selZone === zone.id);
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const zone of OFFICE_ZONES) {
       for (const item of zone.furniture) {
         const { x, y } = tileToScreen(item.col, item.row);
-        ctx.font = "16px serif";
         ctx.globalAlpha = selZone && selZone !== zone.id ? 0.3 : 0.8;
-        ctx.fillText(item.emoji, x + offsetX, y + offsetY - 8);
+        // Try PNG sprite, fall back to emoji
+        if (!drawFurniture(ctx, item.emoji, x + offsetX, y + offsetY)) {
+          ctx.font = "16px serif";
+          ctx.fillText(item.emoji, x + offsetX, y + offsetY - 8);
+        }
       }
     }
     ctx.globalAlpha = 1;
@@ -194,27 +201,37 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       ctx.beginPath(); ctx.ellipse(sx, sy + 2, 16, 6, 0, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fill();
 
-      // Sprite
-      const sprite = getSprite(agent.role);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sprite, sx - SPRITE_SIZE / 2, agentY, SPRITE_SIZE, SPRITE_SIZE);
-      ctx.imageSmoothingEnabled = true;
+      // Sprite — try PNG spritesheet, fall back to procedural
+      const drewPng = drawAgentSprite(ctx, agent.id, agent.status, sx, sy + 4, t, 1.2);
+      if (!drewPng) {
+        const sprite = getSprite(agent.role);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(sprite, sx - SPRITE_SIZE / 2, agentY, SPRITE_SIZE, SPRITE_SIZE);
+        ctx.imageSmoothingEnabled = true;
+      }
 
       // Status dot + pulse
       const color = STATUS_COLORS[agent.status] || "#a7a9be";
-      ctx.beginPath(); ctx.arc(sx + SPRITE_SIZE / 2 - 2, agentY + 4, 4, 0, Math.PI * 2);
+      const dotX = sx + (drewPng ? SPRITE_W * 0.6 : SPRITE_SIZE / 2) - 2;
+      const dotY = agentY + 4;
+      ctx.beginPath(); ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
       ctx.strokeStyle = "#0f0e17"; ctx.lineWidth = 1.5; ctx.stroke();
       if (isActive) {
-        ctx.beginPath(); ctx.arc(sx + SPRITE_SIZE / 2 - 2, agentY + 4, 7, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(dotX, dotY, 7, 0, Math.PI * 2);
         ctx.strokeStyle = color; ctx.globalAlpha = Math.sin(t * 0.005) * 0.3 + 0.5;
         ctx.lineWidth = 1.5; ctx.stroke();
         ctx.globalAlpha = selZone ? (getZoneAt(agent.tileX, agent.tileY)?.id === selZone ? 1 : 0.2) : 1;
       }
 
-      // Animation overlay
-      const anim = ANIMATIONS[agent.status];
-      if (anim) anim(ctx, sx, agentY, t);
+      // Action icon (PNG) or animation overlay (procedural fallback)
+      if (!drawActionIcon(ctx, agent.status, sx, agentY)) {
+        const anim = ANIMATIONS[agent.status];
+        if (anim) anim(ctx, sx, agentY, t);
+      }
+
+      // Status icon next to name
+      drawStatusIcon(ctx, agent.status, sx + 30, sy + 10);
 
       // Name + role
       ctx.font = "bold 11px -apple-system, sans-serif";
@@ -223,15 +240,19 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
       ctx.fillText(agent.role, sx, sy + 27);
 
-      // Task bubble
+      // Task bubble — try PNG speech bubble, fall back to canvas
       if (agent.currentTask && isActive) {
         const bubbleY = agentY - 16;
         const text = agent.currentTask.length > 22 ? agent.currentTask.slice(0, 20) + "…" : agent.currentTask;
         const tw = ctx.measureText(text).width;
         const pad = 8;
-        ctx.fillStyle = "rgba(15,14,23,0.92)";
-        ctx.beginPath(); ctx.roundRect(sx - tw / 2 - pad, bubbleY - 9, tw + pad * 2, 18, 8); ctx.fill();
-        ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
+
+        const bubbleW = tw + pad * 2 + 10;
+        if (!drawSpeechBubble(ctx, sx, bubbleY + 5, bubbleW, 24)) {
+          ctx.fillStyle = "rgba(15,14,23,0.92)";
+          ctx.beginPath(); ctx.roundRect(sx - tw / 2 - pad, bubbleY - 9, tw + pad * 2, 18, 8); ctx.fill();
+          ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
+        }
         ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#fffffe";
         ctx.fillText(text, sx, bubbleY);
         ctx.fillStyle = "rgba(15,14,23,0.92)";
@@ -413,6 +434,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
   }, []);
 
   useEffect(() => {
+    preloadSprites();
     resize();
     const canvas = canvasRef.current;
     window.addEventListener("resize", resize);
