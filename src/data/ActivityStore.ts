@@ -70,7 +70,9 @@ export const useActivityStore = create<ActivityStoreState>((set) => ({
     })),
 }));
 
-// --- Auto-generate events every 8-15 seconds (demo mode) ---
+// --- Demo mode: auto-generate events only when BFF is disconnected ---
+import { getWSStatus, onWSStatusChange } from "./ws-client";
+
 const DEMO_EVENTS: Array<{ agentId: string; type: ActivityType; text: string }> = [
   { agentId: "pm", type: "message", text: "обновил статус спринта" },
   { agentId: "dev", type: "task_completed", text: "закрыл #74 Graph UX" },
@@ -85,8 +87,25 @@ const DEMO_EVENTS: Array<{ agentId: string; type: ActivityType; text: string }> 
 ];
 
 let demoIdx = 0;
-setInterval(() => {
-  const ev = DEMO_EVENTS[demoIdx % DEMO_EVENTS.length];
-  useActivityStore.getState().addEvent(ev.agentId, ev.type, ev.text);
-  demoIdx++;
-}, 8000 + Math.random() * 7000);
+let demoTimer: ReturnType<typeof setInterval> | null = null;
+
+function startDemo() {
+  if (demoTimer) return;
+  demoTimer = setInterval(() => {
+    if (getWSStatus() === "connected") return; // skip when live
+    const ev = DEMO_EVENTS[demoIdx % DEMO_EVENTS.length];
+    useActivityStore.getState().addEvent(ev.agentId, ev.type, ev.text);
+    demoIdx++;
+  }, 8000 + Math.random() * 7000);
+}
+
+function stopDemo() {
+  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+}
+
+// Start demo by default, stop when connected to BFF
+startDemo();
+onWSStatusChange((status) => {
+  if (status === "connected") stopDemo();
+  else startDemo();
+});
