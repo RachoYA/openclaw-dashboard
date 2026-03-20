@@ -40,13 +40,24 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
   const particlesRef = useRef<MessageParticle[]>([]);
   const lastParticleTime = useRef(0);
 
-  // All mutable state in refs (no stale closures)
+  // All mutable state in refs
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
-  const dragRef = useRef({ active: false, didMove: false, startX: 0, startY: 0, panStartX: 0, panStartY: 0 });
 
-  // Pinch-to-zoom state
+  // Unified pointer tracking (supports multi-touch for pinch)
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const dragRef = useRef({ active: false, didMove: false, startX: 0, startY: 0, panStartX: 0, panStartY: 0 });
   const pinchRef = useRef({ active: false, startDist: 0, startZoom: 1 });
+
+  // Props in refs
+  const agentsRef = useRef(agents);
+  agentsRef.current = agents;
+  const selectedZoneRef = useRef(selectedZone);
+  selectedZoneRef.current = selectedZone;
+  const onAgentClickRef = useRef(onAgentClick);
+  onAgentClickRef.current = onAgentClick;
+  const onZoneClickRef = useRef(onZoneClick);
+  onZoneClickRef.current = onZoneClick;
 
   // Expose zoom controls
   useEffect(() => {
@@ -58,16 +69,6 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       };
     }
   }, [sceneRef]);
-
-  // Props in refs for render loop
-  const agentsRef = useRef(agents);
-  agentsRef.current = agents;
-  const selectedZoneRef = useRef(selectedZone);
-  selectedZoneRef.current = selectedZone;
-  const onAgentClickRef = useRef(onAgentClick);
-  onAgentClickRef.current = onAgentClick;
-  const onZoneClickRef = useRef(onZoneClick);
-  onZoneClickRef.current = onZoneClick;
 
   const getDayPhase = () => {
     const h = new Date().getHours();
@@ -90,7 +91,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     if (ctx) ctx.scale(dpr, dpr);
   }, []);
 
-  // ---------- Render loop ----------
+  // ===== Render loop =====
   const render = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -113,7 +114,6 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
-    // Apply zoom
     ctx.save();
     ctx.translate(W / 2, H / 2);
     ctx.scale(zoom, zoom);
@@ -157,12 +157,12 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
         ctx.lineTo(sx, sy + hh); ctx.lineTo(sx - hw, sy);
         ctx.closePath();
         const zone = getZoneAt(col, row);
-        const isLight = (col + row) % 2 === 0;
+        const isLt = (col + row) % 2 === 0;
         if (zone) {
-          ctx.fillStyle = isLight ? zone.floorColor : zone.floorColorAlt;
-          if (selZone === zone.id) ctx.fillStyle = isLight ? "#2a1f5a" : "#332466";
+          ctx.fillStyle = isLt ? zone.floorColor : zone.floorColorAlt;
+          if (selZone === zone.id) ctx.fillStyle = isLt ? "#2a1f5a" : "#332466";
         } else {
-          ctx.fillStyle = isLight ? "#1a1a2e" : "#16213e";
+          ctx.fillStyle = isLt ? "#1a1a2e" : "#16213e";
         }
         ctx.fill();
         ctx.strokeStyle = selZone && zone?.id === selZone ? "#7f5af0" : "#2a2a4a";
@@ -171,14 +171,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       }
     }
 
-    // Zone labels + furniture (PNG sprites with emoji fallback)
+    // Zone labels + furniture
     for (const zone of OFFICE_ZONES) drawZoneLabel(ctx, zone, offsetX, offsetY, selZone === zone.id);
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const zone of OFFICE_ZONES) {
       for (const item of zone.furniture) {
         const { x, y } = tileToScreen(item.col, item.row);
         ctx.globalAlpha = selZone && selZone !== zone.id ? 0.3 : 0.8;
-        // Try PNG sprite, fall back to emoji
         if (!drawFurniture(ctx, item.emoji, x + offsetX, y + offsetY)) {
           ctx.font = "16px serif";
           ctx.fillText(item.emoji, x + offsetX, y + offsetY - 8);
@@ -219,7 +218,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       ctx.beginPath(); ctx.ellipse(sx, sy + 2, 16, 6, 0, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fill();
 
-      // Sprite — try PNG spritesheet, fall back to procedural
+      // Sprite — try PNG, fall back to procedural
       const drewPng = drawAgentSprite(ctx, agent.id, agent.status, sx, sy + 4, t, 1.2);
       if (!drewPng) {
         const sprite = getSprite(agent.role);
@@ -242,13 +241,11 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
         ctx.globalAlpha = selZone ? (getZoneAt(agent.tileX, agent.tileY)?.id === selZone ? 1 : 0.2) : 1;
       }
 
-      // Action icon (PNG) or animation overlay (procedural fallback)
+      // Action icon or animation overlay
       if (!drawActionIcon(ctx, agent.status, sx, agentY)) {
         const anim = ANIMATIONS[agent.status];
         if (anim) anim(ctx, sx, agentY, t);
       }
-
-      // Status icon next to name
       drawStatusIcon(ctx, agent.status, sx + 30, sy + 10);
 
       // Name + role
@@ -258,13 +255,12 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
       ctx.fillText(agent.role, sx, sy + 27);
 
-      // Task bubble — try PNG speech bubble, fall back to canvas
+      // Task bubble
       if (agent.currentTask && isActive) {
         const bubbleY = agentY - 16;
         const text = agent.currentTask.length > 22 ? agent.currentTask.slice(0, 20) + "…" : agent.currentTask;
         const tw = ctx.measureText(text).width;
         const pad = 8;
-
         const bubbleW = tw + pad * 2 + 10;
         if (!drawSpeechBubble(ctx, sx, bubbleY + 5, bubbleW, 24)) {
           ctx.fillStyle = "rgba(15,14,23,0.92)";
@@ -313,14 +309,14 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     // --- HUD (not zoomed, responsive) ---
     const phaseIcons: Record<string, string> = { dawn: "🌅", day: "☀️", dusk: "🌇", night: "🌙" };
     const isMobileCanvas = W < 500;
-    const hudFontTitle = isMobileCanvas ? "bold 14px -apple-system, sans-serif" : "bold 18px -apple-system, sans-serif";
-    const hudFontSub = isMobileCanvas ? "10px -apple-system, sans-serif" : "12px -apple-system, sans-serif";
+    const hudFont = isMobileCanvas ? "bold 14px -apple-system, sans-serif" : "bold 18px -apple-system, sans-serif";
+    const subFont = isMobileCanvas ? "10px -apple-system, sans-serif" : "12px -apple-system, sans-serif";
 
     ctx.textAlign = "left";
-    ctx.font = hudFontTitle; ctx.fillStyle = "#fffffe";
+    ctx.font = hudFont; ctx.fillStyle = "#fffffe";
     ctx.fillText(isMobileCanvas ? "🐾 OpenClaw" : "🐾 OpenClaw Office", 12, isMobileCanvas ? 24 : 28);
     const active = currentAgents.filter((a) => a.status !== "idle" && a.status !== "sleeping").length;
-    ctx.font = hudFontSub; ctx.fillStyle = "#a7a9be";
+    ctx.font = subFont; ctx.fillStyle = "#a7a9be";
     ctx.fillText(`${currentAgents.length} agents · ${active} active ${phaseIcons[phase] || ""}`, 12, isMobileCanvas ? 40 : 46);
     ctx.textAlign = "right";
     ctx.font = isMobileCanvas ? "10px -apple-system, monospace" : "11px -apple-system, monospace";
@@ -333,88 +329,10 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
 
     ctx.restore();
     frameRef.current = requestAnimationFrame(render);
-  }, []); // no deps — all via refs
-
-  // ---------- Wheel zoom ----------
-  const handleWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-    zoomRef.current = Math.min(3, Math.max(0.3, zoomRef.current - e.deltaY * 0.001));
   }, []);
 
-  // ---------- Touch: 1-finger pan, 2-finger pinch-to-zoom ----------
-  const handleTouchStart = useCallback((e: TouchEvent) => {
-    e.preventDefault();
-    if (e.touches.length === 1) {
-      const t = e.touches[0];
-      dragRef.current = { active: true, didMove: false, startX: t.clientX, startY: t.clientY,
-        panStartX: panRef.current.x, panStartY: panRef.current.y };
-      pinchRef.current.active = false;
-    } else if (e.touches.length === 2) {
-      dragRef.current.active = false;
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      pinchRef.current = { active: true, startDist: Math.hypot(dx, dy), startZoom: zoomRef.current };
-    }
-  }, []);
-
-  const handleTouchMove = useCallback((e: TouchEvent) => {
-    e.preventDefault();
-    if (pinchRef.current.active && e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const dist = Math.hypot(dx, dy);
-      const scale = dist / pinchRef.current.startDist;
-      zoomRef.current = Math.min(3, Math.max(0.3, pinchRef.current.startZoom * scale));
-    } else if (dragRef.current.active && e.touches.length === 1) {
-      const t = e.touches[0];
-      const dx = t.clientX - dragRef.current.startX;
-      const dy = t.clientY - dragRef.current.startY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-        dragRef.current.didMove = true;
-        panRef.current.x = dragRef.current.panStartX + dx / zoomRef.current;
-        panRef.current.y = dragRef.current.panStartY + dy / zoomRef.current;
-      }
-    }
-  }, []);
-
-  const handleTouchEnd = useCallback((e: TouchEvent) => {
-    if (e.touches.length === 0) {
-      // Tap detection (no pinch, no drag)
-      if (dragRef.current.active && !dragRef.current.didMove && !pinchRef.current.active) {
-        handleTapAtRef.current(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-      }
-      dragRef.current.active = false;
-      pinchRef.current.active = false;
-    } else if (e.touches.length === 1) {
-      // Went from 2 fingers to 1 — restart pan
-      pinchRef.current.active = false;
-      const t = e.touches[0];
-      dragRef.current = { active: true, didMove: false, startX: t.clientX, startY: t.clientY,
-        panStartX: panRef.current.x, panStartY: panRef.current.y };
-    }
-  }, []);
-
-  // ---------- Mouse: drag to pan ----------
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === "touch") return; // handled by touch events
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    dragRef.current = { active: true, didMove: false, startX: e.clientX, startY: e.clientY,
-      panStartX: panRef.current.x, panStartY: panRef.current.y };
-  }, []);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === "touch" || !dragRef.current.active) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      dragRef.current.didMove = true;
-      panRef.current.x = dragRef.current.panStartX + dx / zoomRef.current;
-      panRef.current.y = dragRef.current.panStartY + dy / zoomRef.current;
-    }
-  }, []);
-
-  // ---------- Click/tap detection (ref to avoid stale closure issues) ----------
-  const handleTapAtRef = useRef((clientX: number, clientY: number) => {
+  // ===== Hit test (called on tap/click) =====
+  const hitTest = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
@@ -426,7 +344,6 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const offsetX = W / 2 + panRef.current.x;
     const offsetY = H / 2 - 50 + panRef.current.y;
 
-    // Wider hitbox for easier clicking (32px radius)
     const currentAgents = agentsRef.current;
     for (const agent of currentAgents) {
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
@@ -435,26 +352,107 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
         return;
       }
     }
-    if (onZoneClickRef.current) {
-      const curZone = selectedZoneRef.current;
+    const curZone = selectedZoneRef.current;
+    const zoneClick = onZoneClickRef.current;
+    if (zoneClick) {
       for (const zone of OFFICE_ZONES) {
         const cc = (zone.col1 + zone.col2) / 2, cr = (zone.row1 + zone.row2) / 2;
         const { x, y } = tileToScreen(cc, cr);
         const zw = (zone.col2 - zone.col1 + 1) * TILE_WIDTH / 2;
         const zh = (zone.row2 - zone.row1 + 1) * TILE_HEIGHT / 2;
         if (Math.abs(mx - (x + offsetX)) < zw && Math.abs(my - (y + offsetY)) < zh) {
-          onZoneClickRef.current(curZone === zone.id ? null : zone.id);
+          zoneClick(curZone === zone.id ? null : zone.id);
           return;
         }
       }
-      onZoneClickRef.current(null);
+      zoneClick(null);
     }
-  });
+  }, []);
+
+  // ===== Wheel zoom =====
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    zoomRef.current = Math.min(3, Math.max(0.3, zoomRef.current - e.deltaY * 0.001));
+  }, []);
+
+  // ===== Unified Pointer Events (mouse + touch) =====
+  const getPointerDist = () => {
+    const pts = Array.from(pointersRef.current.values());
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  };
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const canvas = e.currentTarget as HTMLElement;
+    canvas.setPointerCapture(e.pointerId);
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size === 1) {
+      // Single pointer → start pan
+      dragRef.current = {
+        active: true, didMove: false,
+        startX: e.clientX, startY: e.clientY,
+        panStartX: panRef.current.x, panStartY: panRef.current.y,
+      };
+      pinchRef.current.active = false;
+    } else if (pointersRef.current.size === 2) {
+      // Two pointers → start pinch
+      dragRef.current.active = false;
+      pinchRef.current = { active: true, startDist: getPointerDist(), startZoom: zoomRef.current };
+    }
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pinchRef.current.active && pointersRef.current.size === 2) {
+      const dist = getPointerDist();
+      if (pinchRef.current.startDist > 0) {
+        zoomRef.current = Math.min(3, Math.max(0.3, pinchRef.current.startZoom * (dist / pinchRef.current.startDist)));
+      }
+    } else if (dragRef.current.active && pointersRef.current.size === 1) {
+      const dx = e.clientX - dragRef.current.startX;
+      const dy = e.clientY - dragRef.current.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        dragRef.current.didMove = true;
+        panRef.current.x = dragRef.current.panStartX + dx / zoomRef.current;
+        panRef.current.y = dragRef.current.panStartY + dy / zoomRef.current;
+      }
+    }
+  }, []);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === "touch") return;
-    if (!dragRef.current.didMove) handleTapAtRef.current(e.clientX, e.clientY);
-    dragRef.current.active = false;
+    const wasSingleTap = pointersRef.current.size === 1 && dragRef.current.active && !dragRef.current.didMove && !pinchRef.current.active;
+
+    pointersRef.current.delete(e.pointerId);
+
+    if (wasSingleTap) {
+      // Click/tap — hit test
+      hitTest(e.clientX, e.clientY);
+    }
+
+    if (pointersRef.current.size === 0) {
+      dragRef.current.active = false;
+      pinchRef.current.active = false;
+    } else if (pointersRef.current.size === 1) {
+      // Went from 2→1: restart pan from remaining pointer
+      pinchRef.current.active = false;
+      const remaining = Array.from(pointersRef.current.values())[0];
+      dragRef.current = {
+        active: true, didMove: false,
+        startX: remaining.x, startY: remaining.y,
+        panStartX: panRef.current.x, panStartY: panRef.current.y,
+      };
+    }
+  }, [hitTest]);
+
+  const handlePointerCancel = useCallback((e: React.PointerEvent) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size === 0) {
+      dragRef.current.active = false;
+      pinchRef.current.active = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -463,19 +461,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const canvas = canvasRef.current;
     window.addEventListener("resize", resize);
     canvas?.addEventListener("wheel", handleWheel, { passive: false });
-    canvas?.addEventListener("touchstart", handleTouchStart, { passive: false });
-    canvas?.addEventListener("touchmove", handleTouchMove, { passive: false });
-    canvas?.addEventListener("touchend", handleTouchEnd, { passive: false });
     frameRef.current = requestAnimationFrame(render);
     return () => {
       window.removeEventListener("resize", resize);
       canvas?.removeEventListener("wheel", handleWheel);
-      canvas?.removeEventListener("touchstart", handleTouchStart);
-      canvas?.removeEventListener("touchmove", handleTouchMove);
-      canvas?.removeEventListener("touchend", handleTouchEnd);
       cancelAnimationFrame(frameRef.current);
     };
-  }, [resize, render, handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd]);
+  }, [resize, render, handleWheel]);
 
   return (
     <div ref={containerRef} style={{ position: "absolute", inset: 0, touchAction: "none", overflow: "hidden" }}>
@@ -484,7 +476,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         style={{ display: "block", width: "100%", height: "100%", cursor: "grab" }}
       />
     </div>
