@@ -32,16 +32,21 @@ function connect() {
     try {
       const msg: BFFMessage = JSON.parse(event.data as string);
       if (msg.type === "agents" && Array.isArray(msg.data)) {
-        // Merge BFF data with store (preserve tile positions from mock if BFF doesn't provide)
         const store = useAgentStore.getState();
         for (const agent of msg.data) {
+          // Sync all fields from BFF — real OpenClaw data overrides mock
           store.updateAgent(agent.id, {
             status: agent.status,
             currentTask: agent.currentTask,
             lastMessage: agent.lastMessage,
             lastActiveAt: agent.lastActiveAt,
+            // Sync positions from BFF (they reflect office zone layout)
+            tileX: agent.tileX,
+            tileY: agent.tileY,
+            direction: agent.direction,
           });
         }
+        console.log(`[WS] Synced ${msg.data.length} agents (real data)`);
       }
     } catch (err) {
       console.warn("[WS] Failed to parse message:", err);

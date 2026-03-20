@@ -108,80 +108,162 @@ async function getOpenClawStatus() {
 /**
  * Get sessions via `openclaw sessions list`.
  * Tries --json first, falls back to text parsing.
+ * Also attempts `openclaw sessions history` for recent messages.
  */
 async function getSessionsList() {
+  // Try JSON output first
   try {
     const { stdout } = await exec(
       OPENCLAW_BIN,
       ["sessions", "list", "--json", "--active-minutes=60"],
       { timeout: 15000, env: { ...process.env, NO_COLOR: "1" } }
     );
-    return JSON.parse(stdout);
+    const sessions = JSON.parse(stdout);
+    return Array.isArray(sessions) ? sessions : sessions?.sessions || [];
   } catch {
-    // Fallback: try without --json
-    try {
-      const { stdout } = await exec(
-        OPENCLAW_BIN,
-        ["sessions", "list"],
-        { timeout: 15000, env: { ...process.env, NO_COLOR: "1" } }
-      );
-      return parseSessionsText(stdout);
-    } catch {
-      return null;
-    }
+    // noop
+  }
+
+  // Fallback: text parsing
+  try {
+    const { stdout } = await exec(
+      OPENCLAW_BIN,
+      ["sessions", "list"],
+      { timeout: 15000, env: { ...process.env, NO_COLOR: "1" } }
+    );
+    return parseSessionsText(stdout);
+  } catch {
+    return [];
   }
 }
 
 /**
  * Parse text output of `openclaw sessions list` into structured data.
- * Lines like: "agent:pm:telegram:group:-5102635917  active 2m ago  model claude-opus-4-6"
+ * Handles various formats:
+ *   "agent:pm:telegram:group:-5102635917  active 2m ago  model claude-opus-4-6"
+ *   "agent:pm:... │ idle │ 2m ago │ claude-opus-4-6"
  */
 function parseSessionsText(text) {
-  if (!text) return null;
+  if (!text) return [];
   const sessions = [];
   for (const line of text.split("\n")) {
+    // Match agent:<id>: pattern in session key
     const match = line.match(/agent:(\w+):/);
-    if (match) {
-      const agentId = match[1];
-      const activeMatch = line.match(/active\s+(\d+)([smh])\s+ago/);
-      let lastMessageAge = 9999;
-      if (activeMatch) {
-        const val = parseInt(activeMatch[1], 10);
-        const unit = activeMatch[2];
-        lastMessageAge = unit === "h" ? val * 3600 : unit === "m" ? val * 60 : val;
-      }
-      sessions.push({ key: line.trim().split(/\s+/)[0], agentId, lastMessageAge });
+    if (!match) continue;
+
+    const agentId = match[1];
+    const sessionKey = line.trim().split(/[\s│]+/)[0];
+
+    // Parse age: "2m ago", "30s ago", "1h ago"
+    const activeMatch = line.match(/(\d+)\s*([smh])\s*(?:ago)?/);
+    let lastMessageAge = 9999;
+    if (activeMatch) {
+      const val = parseInt(activeMatch[1], 10);
+      const unit = activeMatch[2];
+      lastMessageAge = unit === "h" ? val * 3600 : unit === "m" ? val * 60 : val;
     }
+
+    // Try to extract status hint from text
+    let statusHint = null;
+    if (/\b(active|running)\b/i.test(line)) statusHint = "active";
+    if (/\b(idle)\b/i.test(line)) statusHint = "idle";
+
+    // Try to extract last message snippet
+    const msgMatch = line.match(/last:\s*"?(.+?)"?\s*$/);
+    const lastMessage = msgMatch ? msgMatch[1].trim() : null;
+
+    sessions.push({ key: sessionKey, agentId, lastMessageAge, statusHint, lastMessage });
   }
   return sessions;
 }
 
 /**
+ * Fetch recent session history to extract currentTask.
+ * Looks for task-related patterns in the last few messages.
+ */
+async function getAgentCurrentTask(agentId, sessions) {
+  // Find session key for this agent
+  const agentSession = sessions?.find((s) => s.key?.includes(agentId) || s.agentId === agentId);
+  if (!agentSession?.key) return null;
+
+  try {
+    const { stdout } = await exec(
+      OPENCLAW_BIN,
+      ["sessions", "history", agentSession.key, "--limit=5", "--json"],
+      { timeout: 10000, env: { ...process.env, NO_COLOR: "1" } }
+    );
+    const history = JSON.parse(stdout);
+    const messages = Array.isArray(history) ? history : history?.messages || [];
+
+    // Look for task patterns in recent messages
+    for (const msg of messages) {
+      const text = msg?.content || msg?.text || msg?.message || "";
+      // Match common task patterns
+      const taskPatterns = [
+        /(?:✅\s*Принял?|задача|task|working on|делаю)[:：]?\s*(.{10,80})/i,
+        /(?:Phase|Фаза)\s+\d+\s*[-—:]\s*(.{10,60})/i,
+        /(?:PR|pull request)\s*#?\d+/i,
+      ];
+      for (const pat of taskPatterns) {
+        const m = text.match(pat);
+        if (m) return m[1]?.trim() || m[0]?.trim();
+      }
+    }
+  } catch {
+    // History not available
+  }
+  return null;
+}
+
+/**
  * Infer agent status from session data.
- * Uses real lastMessageAge from sessions, not random values.
+ * Maps real session activity to dashboard animation states.
+ *
+ * Status mapping:
+ *   < 15s  → "talking"    (actively in conversation)
+ *   < 60s  → "working"    (recently active)
+ *   < 180s → "thinking"   (processing / waiting for response)
+ *   < 600s → "idle"       (quiet but awake)
+ *   < 1800s → "waiting"   (been a while)
+ *   >= 1800s → "sleeping" (inactive 30+ minutes)
+ *
+ * Role-specific overrides:
+ *   devops + recently active → "deploying"
+ *   qa + recently active → "testing"
+ *   techlead + recently active → "reviewing"
  */
 function inferStatus(agentId, sessions, heartbeatActive) {
   if (!heartbeatActive) return "sleeping";
 
-  // Find the most recent session for this agent
-  const agentSessions = sessions?.filter((s) => s.key?.includes(agentId) || s.agentId === agentId) || [];
+  const agentSessions = sessions?.filter(
+    (s) => s.key?.includes(agentId) || s.agentId === agentId
+  ) || [];
   if (agentSessions.length === 0) return "idle";
 
   const minAge = Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999));
 
-  if (minAge < 30) return "talking";     // Active conversation in last 30s
-  if (minAge < 120) return "working";    // Activity in last 2 min
-  if (minAge < 300) return "thinking";   // Activity in last 5 min
-  if (minAge < 1800) return "idle";      // Activity in last 30 min
+  // Role-specific statuses for recently active agents
+  if (minAge < 120) {
+    const roleMap = { devops: "deploying", qa: "testing", techlead: "reviewing" };
+    if (roleMap[agentId]) return roleMap[agentId];
+  }
+
+  if (minAge < 15) return "talking";
+  if (minAge < 60) return "working";
+  if (minAge < 180) return "thinking";
+  if (minAge < 600) return "idle";
+  if (minAge < 1800) return "waiting";
   return "sleeping";
 }
 
 /**
  * Extract last message text from session data for an agent.
+ * Prefers explicit lastMessage field, falls back to statusHint.
  */
 function getLastMessage(agentId, sessions) {
-  const agentSessions = sessions?.filter((s) => s.key?.includes(agentId) || s.agentId === agentId) || [];
-  // If session has lastMessage field
+  const agentSessions = sessions?.filter(
+    (s) => s.key?.includes(agentId) || s.agentId === agentId
+  ) || [];
   for (const s of agentSessions) {
     if (s.lastMessage) return s.lastMessage;
   }
@@ -208,13 +290,26 @@ async function buildAgentStates() {
   const heartbeats = parseHeartbeat(statusText);
   const agents = [];
 
+  // Fetch current tasks in parallel for all agents
+  const taskPromises = Object.keys(AGENT_POSITIONS).map(async (id) => {
+    try {
+      return [id, await getAgentCurrentTask(id, sessions)];
+    } catch {
+      return [id, null];
+    }
+  });
+  const taskResults = await Promise.all(taskPromises);
+  const taskMap = Object.fromEntries(taskResults);
+
   for (const [id, pos] of Object.entries(AGENT_POSITIONS)) {
     const isActive = heartbeats[id] !== false;
     const status = inferStatus(id, sessions, isActive);
     const lastMessage = getLastMessage(id, sessions);
 
     // Determine lastActiveAt from sessions
-    const agentSessions = sessions?.filter((s) => s.key?.includes(id) || s.agentId === id) || [];
+    const agentSessions = sessions?.filter(
+      (s) => s.key?.includes(id) || s.agentId === id
+    ) || [];
     const minAge = agentSessions.length > 0
       ? Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999))
       : null;
@@ -227,7 +322,7 @@ async function buildAgentStates() {
       name: AGENT_NAMES[id] || id,
       role: AGENT_ROLES[id] || "Agent",
       status,
-      currentTask: null, // TODO Phase 4: extract from session history context
+      currentTask: taskMap[id] || null,
       lastMessage,
       lastActiveAt,
       tileX: pos.tileX,
