@@ -12,9 +12,9 @@ const EVENT_ICONS: Record<string, string> = {
   review: "🔍",
 };
 
-export function ActivityFeed() {
+export function ActivityFeed({ compact }: { compact?: boolean }) {
   const events = useActivityStore((s) => s.events);
-  const recent = events.slice(-8).reverse();
+  const recent = events.slice(compact ? -4 : -8).reverse();
 
   return (
     <div style={containerStyle}>
@@ -63,9 +63,10 @@ const containerStyle: React.CSSProperties = {
   right: 0,
   background: "rgba(15, 14, 23, 0.95)",
   borderTop: "1px solid #2a2a4a",
-  maxHeight: "180px",
+  maxHeight: "140px",
   overflow: "hidden",
   zIndex: 5,
+  fontSize: "clamp(10px, 2.5vw, 13px)",
 };
 
 const headerStyle: React.CSSProperties = {

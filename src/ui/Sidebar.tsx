@@ -30,9 +30,10 @@ const STATUS_COLORS: Record<string, string> = {
 interface SidebarProps {
   agent: AgentState | null;
   onClose: () => void;
+  compact?: boolean;
 }
 
-export function Sidebar({ agent, onClose }: SidebarProps) {
+export function Sidebar({ agent, onClose, compact }: SidebarProps) {
   if (!agent) {
     return (
       <div style={containerStyle}>
@@ -51,10 +52,18 @@ export function Sidebar({ agent, onClose }: SidebarProps) {
     (e) => Date.now() - new Date(e.timestamp).getTime() < 60000
   ).length;
 
+  const style = compact ? mobileContainerStyle : containerStyle;
+
   return (
-    <div style={containerStyle}>
+    <div style={style}>
+      {/* Drag handle (mobile) */}
+      {compact && (
+        <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 4px" }}>
+          <div style={{ width: "40px", height: "4px", borderRadius: "2px", background: "#525272" }} />
+        </div>
+      )}
       {/* Header */}
-      <div style={{ padding: "20px", borderBottom: "1px solid #2a2a4a" }}>
+      <div style={{ padding: compact ? "12px 16px" : "20px", borderBottom: "1px solid #2a2a4a" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <h2 style={{ margin: 0, fontSize: "18px", color: "#fffffe" }}>{agent.name}</h2>
@@ -155,6 +164,14 @@ const containerStyle: React.CSSProperties = {
   borderLeft: "1px solid #2a2a4a",
   overflow: "auto",
   flexShrink: 0,
-  position: "relative",
-  zIndex: 10,
+};
+
+const mobileContainerStyle: React.CSSProperties = {
+  width: "100%",
+  maxHeight: "60vh",
+  background: "#0f0e17",
+  borderTop: "1px solid #2a2a4a",
+  overflow: "auto",
+  borderTopLeftRadius: "16px",
+  borderTopRightRadius: "16px",
 };
