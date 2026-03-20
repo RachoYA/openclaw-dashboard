@@ -40,18 +40,10 @@ interface ActivityStoreState {
   addEvent: (agentId: string, type: ActivityType, text: string) => void;
 }
 
-// Seed with mock events
-const SEED_EVENTS: ActivityEvent[] = [
-  { id: "s1", type: "task_assigned", agentId: "pm", agentName: "Артём", agentColor: "#7f5af0", text: "назначил задачу #7 → Коля", timestamp: new Date(Date.now() - 120000).toISOString() },
-  { id: "s2", type: "task_started", agentId: "dev", agentName: "Коля", agentColor: "#2cb67d", text: "начал Phase 1 scaffold", timestamp: new Date(Date.now() - 90000).toISOString() },
-  { id: "s3", type: "review", agentId: "techlead", agentName: "Макс", agentColor: "#fffffe", text: "ревьюит ARCHITECTURE.md", timestamp: new Date(Date.now() - 60000).toISOString() },
-  { id: "s4", type: "pr_created", agentId: "dev", agentName: "Коля", agentColor: "#2cb67d", text: "создал PR #8", timestamp: new Date(Date.now() - 45000).toISOString() },
-  { id: "s5", type: "message", agentId: "analyst", agentName: "Лена", agentColor: "#e53170", text: "написала сценарии приёмки", timestamp: new Date(Date.now() - 30000).toISOString() },
-  { id: "s6", type: "deploy", agentId: "devops", agentName: "Дима", agentColor: "#ff8906", text: "задеплоил staging", timestamp: new Date(Date.now() - 15000).toISOString() },
-];
+// No seed events — only real data from BFF
 
 export const useActivityStore = create<ActivityStoreState>((set) => ({
-  events: SEED_EVENTS,
+  events: [],
 
   addEvent: (agentId, type, text) =>
     set((state) => ({
@@ -70,42 +62,4 @@ export const useActivityStore = create<ActivityStoreState>((set) => ({
     })),
 }));
 
-// --- Demo mode: auto-generate events only when BFF is disconnected ---
-import { getWSStatus, onWSStatusChange } from "./ws-client";
-
-const DEMO_EVENTS: Array<{ agentId: string; type: ActivityType; text: string }> = [
-  { agentId: "pm", type: "message", text: "обновил статус спринта" },
-  { agentId: "dev", type: "task_completed", text: "закрыл #74 Graph UX" },
-  { agentId: "qa", type: "error", text: "нашёл баг: toast не показывается" },
-  { agentId: "techlead", type: "pr_merged", text: "замёржил PR #77" },
-  { agentId: "devops", type: "deploy", text: "обновил production" },
-  { agentId: "analyst", type: "task_started", text: "пишет отчёт тестирования" },
-  { agentId: "dev", type: "pr_created", text: "создал PR #78" },
-  { agentId: "pm", type: "task_assigned", text: "назначил #67 → Коля" },
-  { agentId: "qa", type: "task_completed", text: "прошёл регрессию Dashboard" },
-  { agentId: "devops", type: "message", text: "настроил health checks" },
-];
-
-let demoIdx = 0;
-let demoTimer: ReturnType<typeof setInterval> | null = null;
-
-function startDemo() {
-  if (demoTimer) return;
-  demoTimer = setInterval(() => {
-    if (getWSStatus() === "connected") return; // skip when live
-    const ev = DEMO_EVENTS[demoIdx % DEMO_EVENTS.length];
-    useActivityStore.getState().addEvent(ev.agentId, ev.type, ev.text);
-    demoIdx++;
-  }, 8000 + Math.random() * 7000);
-}
-
-function stopDemo() {
-  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
-}
-
-// Start demo by default, stop when connected to BFF
-startDemo();
-onWSStatusChange((status) => {
-  if (status === "connected") stopDemo();
-  else startDemo();
-});
+// Demo mode removed — only real data from BFF via WebSocket

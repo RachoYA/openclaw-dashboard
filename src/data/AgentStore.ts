@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { AgentState, AgentStatus } from "./types";
 
 // ---------------------------------------------------------------------------
-// Mock agents — replaced by real OpenClaw data in Phase 3
+// Initial agent positions — overwritten by real BFF data on connect
 // ---------------------------------------------------------------------------
 const MOCK_AGENTS: AgentState[] = [
   { id: "pm", name: "Артём", role: "PM", status: "working", currentTask: "Координация спринта", lastMessage: "Коля, PR #77 готов к ревью", lastActiveAt: new Date().toISOString(), tileX: 3, tileY: 2, direction: "se", avatar: null },
