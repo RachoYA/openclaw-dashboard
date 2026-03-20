@@ -6,7 +6,9 @@ import { Timeline } from "./ui/Timeline";
 import { Metrics } from "./ui/Metrics";
 import { Heatmap } from "./ui/Heatmap";
 import { TaskButton } from "./ui/TaskButton";
+import { ThemeToggle } from "./ui/ThemeToggle";
 import { useIsMobile } from "./hooks/useIsMobile";
+import { useTheme } from "./hooks/useTheme";
 import { useAgentStore } from "./data/AgentStore";
 import { startWSClient, stopWSClient } from "./data/ws-client";
 
@@ -15,6 +17,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const isMobile = useIsMobile();
+  const theme = useTheme((s) => s.theme);
 
   useEffect(() => {
     startWSClient();
@@ -31,13 +34,15 @@ export function App() {
         onAgentClick={setSelectedId}
         selectedZone={selectedZone}
         onZoneClick={setSelectedZone}
+        theme={theme}
       />
 
-      {/* Overlay UI — hide some on mobile for more canvas space */}
+      {/* Overlay UI */}
       {!isMobile && <Metrics />}
       <Timeline />
       {!isMobile && <Heatmap />}
       <TaskButton />
+      <ThemeToggle />
       <ActivityFeed compact={isMobile} />
 
       {/* Sidebar: overlay on desktop, bottom sheet on mobile */}
