@@ -5,6 +5,7 @@ import { ActivityFeed } from "./ui/ActivityFeed";
 import { Timeline } from "./ui/Timeline";
 import { Metrics } from "./ui/Metrics";
 import { Heatmap } from "./ui/Heatmap";
+import { TaskButton } from "./ui/TaskButton";
 import { useAgentStore } from "./data/AgentStore";
 import { startWSClient, stopWSClient } from "./data/ws-client";
 
@@ -34,6 +35,7 @@ export function App() {
         <Metrics />
         <Timeline />
         <Heatmap />
+        <TaskButton />
         <ActivityFeed />
       </div>
 

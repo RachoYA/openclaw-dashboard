@@ -4,7 +4,20 @@
 import { useAgentStore } from "./AgentStore";
 import type { AgentState } from "./types";
 
-const BFF_URL = import.meta.env.VITE_BFF_WS_URL || "ws://localhost:3101";
+/**
+ * Determine WebSocket URL:
+ * 1. Explicit VITE_BFF_WS_URL env var
+ * 2. Relative to current host: wss://host/db/ws (or ws:// for localhost)
+ */
+function getWsUrl(): string {
+  if (import.meta.env.VITE_BFF_WS_URL) return import.meta.env.VITE_BFF_WS_URL;
+
+  const loc = window.location;
+  const proto = loc.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${loc.host}/db/ws`;
+}
+
+const BFF_URL = getWsUrl();
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
