@@ -119,10 +119,10 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     ctx.scale(zoom, zoom);
     ctx.translate(-W / 2, -H / 2);
 
-    // --- Background ---
+    // --- Background (light theme) ---
     const gradColors: Record<string, [string, string]> = {
-      dawn: ["#1a0a2e", "#2d1545"], day: ["#0f0e17", "#1a1a2e"],
-      dusk: ["#1a1020", "#2d1a25"], night: ["#050510", "#0a0a18"],
+      dawn: ["#fff5e6", "#ffecd2"], day: ["#f5f5f7", "#ecedf0"],
+      dusk: ["#f5e6f0", "#edd8e8"], night: ["#e0e0e8", "#d5d5e0"],
     };
     const [g1, g2] = gradColors[phase] || gradColors.day;
     const grad = ctx.createLinearGradient(0, 0, 0, H);
@@ -131,8 +131,8 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     ctx.fillRect(-W, -H, W * 3, H * 3);
 
     if (phase === "night") {
-      ctx.fillStyle = "rgba(0,0,20,0.3)"; ctx.fillRect(-W, -H, W * 3, H * 3);
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = "rgba(100,100,130,0.08)"; ctx.fillRect(-W, -H, W * 3, H * 3);
+      ctx.fillStyle = "#888";
       for (let i = 0; i < 30; i++) {
         const sx = (Math.sin(i * 127.1) * 0.5 + 0.5) * W;
         const sy = (Math.cos(i * 311.7) * 0.5 + 0.5) * H * 0.3;
@@ -142,7 +142,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       ctx.globalAlpha = 1;
     }
     if (phase === "dawn" || phase === "dusk") {
-      ctx.fillStyle = phase === "dawn" ? "rgba(255,137,6,0.06)" : "rgba(229,49,112,0.06)";
+      ctx.fillStyle = phase === "dawn" ? "rgba(255,200,100,0.08)" : "rgba(200,100,150,0.06)";
       ctx.fillRect(-W, -H, W * 3, H * 3);
     }
 
@@ -158,14 +158,21 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
         ctx.closePath();
         const zone = getZoneAt(col, row);
         const isLight = (col + row) % 2 === 0;
+        // Light theme zone colors
+        const lightZoneColors: Record<string, [string, string]> = {
+          "pm-board": ["#e8e0f5", "#e2d8f0"], "dev-corner": ["#d8f0e0", "#d0ebd8"],
+          "analyst-desk": ["#f0d8e8", "#ebd0e2"], "common-area": ["#e8e8f0", "#e2e2eb"],
+          "qa-lab": ["#d8e8f5", "#d0e2f0"], "devops-room": ["#f0e8d8", "#ebe2d0"],
+        };
         if (zone) {
-          ctx.fillStyle = isLight ? zone.floorColor : zone.floorColorAlt;
-          if (selZone === zone.id) ctx.fillStyle = isLight ? "#2a1f5a" : "#332466";
+          const lc = lightZoneColors[zone.id];
+          ctx.fillStyle = lc ? (isLight ? lc[0] : lc[1]) : (isLight ? "#e8e8ed" : "#dddde5");
+          if (selZone === zone.id) ctx.fillStyle = isLight ? "#d0c8f0" : "#c4bae8";
         } else {
-          ctx.fillStyle = isLight ? "#1a1a2e" : "#16213e";
+          ctx.fillStyle = isLight ? "#e8e8ed" : "#dddde5";
         }
         ctx.fill();
-        ctx.strokeStyle = selZone && zone?.id === selZone ? "#7f5af0" : "#2a2a4a";
+        ctx.strokeStyle = selZone && zone?.id === selZone ? "#7f5af0" : "#d1d1d6";
         ctx.lineWidth = selZone && zone?.id === selZone ? 1 : 0.5;
         ctx.stroke();
       }
@@ -192,13 +199,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
       const sx = x + offsetX, sy = y + offsetY;
       if (selZone && getZoneAt(agent.tileX, agent.tileY)?.id !== selZone) ctx.globalAlpha = 0.25;
-      ctx.fillStyle = "#3d2b1f";
+      ctx.fillStyle = "#c4a882";
       ctx.beginPath();
       ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 16, sy + 4);
       ctx.lineTo(sx, sy + 12); ctx.lineTo(sx - 16, sy + 4);
       ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "#5c4033"; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = "#0f0e17"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
+      ctx.strokeStyle = "#a08060"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = "#e8e8ed"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
       ctx.fillStyle = "#2cb67d"; ctx.fillRect(sx - 4, sy - 11, 8, 6);
       ctx.globalAlpha = 1;
     }
@@ -217,7 +224,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
 
       // Shadow
       ctx.beginPath(); ctx.ellipse(sx, sy + 2, 16, 6, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.08)"; ctx.fill();
 
       // Sprite — try PNG spritesheet, fall back to procedural
       const drewPng = drawAgentSprite(ctx, agent.id, agent.status, sx, sy + 4, t, 1.2);
@@ -234,7 +241,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       const dotY = agentY + 4;
       ctx.beginPath(); ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = "#0f0e17"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
       if (isActive) {
         ctx.beginPath(); ctx.arc(dotX, dotY, 7, 0, Math.PI * 2);
         ctx.strokeStyle = color; ctx.globalAlpha = Math.sin(t * 0.005) * 0.3 + 0.5;
@@ -253,9 +260,9 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
 
       // Name + role
       ctx.font = "bold 11px -apple-system, sans-serif";
-      ctx.textAlign = "center"; ctx.fillStyle = "#fffffe";
+      ctx.textAlign = "center"; ctx.fillStyle = "#1d1d1f";
       ctx.fillText(agent.name, sx, sy + 16);
-      ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
+      ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#8e8ea0";
       ctx.fillText(agent.role, sx, sy + 27);
 
       // Task bubble — try PNG speech bubble, fall back to canvas
@@ -267,13 +274,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
 
         const bubbleW = tw + pad * 2 + 10;
         if (!drawSpeechBubble(ctx, sx, bubbleY + 5, bubbleW, 24)) {
-          ctx.fillStyle = "rgba(15,14,23,0.92)";
+          ctx.fillStyle = "rgba(255,255,255,0.95)";
           ctx.beginPath(); ctx.roundRect(sx - tw / 2 - pad, bubbleY - 9, tw + pad * 2, 18, 8); ctx.fill();
           ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
         }
-        ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#fffffe";
+        ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#1d1d1f";
         ctx.fillText(text, sx, bubbleY);
-        ctx.fillStyle = "rgba(15,14,23,0.92)";
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
         ctx.beginPath(); ctx.moveTo(sx - 4, bubbleY + 9);
         ctx.lineTo(sx + 4, bubbleY + 9); ctx.lineTo(sx, bubbleY + 14); ctx.closePath(); ctx.fill();
       }
@@ -317,17 +324,17 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const hudFontSub = isMobileCanvas ? "10px -apple-system, sans-serif" : "12px -apple-system, sans-serif";
 
     ctx.textAlign = "left";
-    ctx.font = hudFontTitle; ctx.fillStyle = "#fffffe";
+    ctx.font = hudFontTitle; ctx.fillStyle = "#1d1d1f";
     ctx.fillText(isMobileCanvas ? "🐾 OpenClaw" : "🐾 OpenClaw Office", 12, isMobileCanvas ? 24 : 28);
     const active = currentAgents.filter((a) => a.status !== "idle" && a.status !== "sleeping").length;
-    ctx.font = hudFontSub; ctx.fillStyle = "#a7a9be";
+    ctx.font = hudFontSub; ctx.fillStyle = "#6e6e73";
     ctx.fillText(`${currentAgents.length} agents · ${active} active ${phaseIcons[phase] || ""}`, 12, isMobileCanvas ? 40 : 46);
     ctx.textAlign = "right";
     ctx.font = isMobileCanvas ? "10px -apple-system, monospace" : "11px -apple-system, monospace";
-    ctx.fillStyle = "#525272";
+    ctx.fillStyle = "#8e8ea0";
     ctx.fillText(new Date().toLocaleTimeString("ru"), W - 12, isMobileCanvas ? 24 : 28);
     if (zoom !== 1) {
-      ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
+      ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#8e8ea0";
       ctx.fillText(`${Math.round(zoom * 100)}%`, W - 12, isMobileCanvas ? 38 : 44);
     }
 
