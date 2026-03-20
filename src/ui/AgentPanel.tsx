@@ -180,9 +180,21 @@ export function AgentPanel({ agent, onClose, compact }: AgentPanelProps) {
 
       {/* Quick actions */}
       <div style={{ ...sectionStyle, display: "flex", gap: "8px" }}>
-        <ActionBtn icon="💬" label="Написать" />
-        <ActionBtn icon="📋" label="Задачи" href={`https://github.com/RachoYA/openclaw-dashboard/issues?q=assignee:${agent.id}`} />
-        <ActionBtn icon="📊" label="Статус" />
+        <ActionBtn
+          icon="💬"
+          label="Написать"
+          href={`https://t.me/fabrika_${agent.id}_bot`}
+        />
+        <ActionBtn
+          icon="📋"
+          label="Задачи"
+          href="https://github.com/RachoYA/openclaw-dashboard/issues"
+        />
+        <ActionBtn
+          icon="📊"
+          label="GitHub"
+          href="https://github.com/RachoYA/openclaw-dashboard"
+        />
       </div>
     </div>
   );
