@@ -110,71 +110,50 @@ async function getOpenClawStatus() {
  * Tries --json first, falls back to text parsing.
  * Also attempts `openclaw sessions history` for recent messages.
  */
-async function getSessionsList() {
-  // Try JSON output first
-  try {
-    const { stdout } = await exec(
-      OPENCLAW_BIN,
-      ["sessions", "list", "--json", "--active-minutes=60"],
-      { timeout: 15000, env: { ...process.env, NO_COLOR: "1" } }
-    );
-    const sessions = JSON.parse(stdout);
-    return Array.isArray(sessions) ? sessions : sessions?.sessions || [];
-  } catch {
-    // noop
-  }
-
-  // Fallback: text parsing
-  try {
-    const { stdout } = await exec(
-      OPENCLAW_BIN,
-      ["sessions", "list"],
-      { timeout: 15000, env: { ...process.env, NO_COLOR: "1" } }
-    );
-    return parseSessionsText(stdout);
-  } catch {
-    return [];
-  }
-}
-
 /**
- * Parse text output of `openclaw sessions list` into structured data.
- * Handles various formats:
- *   "agent:pm:telegram:group:-5102635917  active 2m ago  model claude-opus-4-6"
- *   "agent:pm:... │ idle │ 2m ago │ claude-opus-4-6"
+ * Parse sessions directly from `openclaw status` output.
+ * This is more reliable than `openclaw sessions list` which only shows
+ * the current agent's sessions and doesn't support --json.
+ *
+ * Status output contains lines like:
+ *   │ agent:dev:telegram:group:-51026…  │ group  │ 1m ago  │ claude-opus-4-6 │ ...
+ *   │ agent:pm:main                     │ direct │ 35m ago │ claude-opus-4-6 │ ...
  */
-function parseSessionsText(text) {
-  if (!text) return [];
+function parseSessionsFromStatus(statusText) {
+  if (!statusText) return [];
   const sessions = [];
-  for (const line of text.split("\n")) {
-    // Match agent:<id>: pattern in session key
-    const match = line.match(/agent:(\w+):/);
+  for (const line of statusText.split("\n")) {
+    // Match session lines: │ agent:<id>:...  │ ... │ <age> ago │
+    const match = line.match(/agent:(\w+):[^\s│]+/);
     if (!match) continue;
 
     const agentId = match[1];
-    const sessionKey = line.trim().split(/[\s│]+/)[0];
 
-    // Parse age: "2m ago", "30s ago", "1h ago"
-    const activeMatch = line.match(/(\d+)\s*([smh])\s*(?:ago)?/);
+    // Parse age: "1m ago", "3h ago", "35m ago", "23h ago"
+    const ageMatch = line.match(/(\d+)([smh])\s*ago/);
     let lastMessageAge = 9999;
-    if (activeMatch) {
-      const val = parseInt(activeMatch[1], 10);
-      const unit = activeMatch[2];
+    if (ageMatch) {
+      const val = parseInt(ageMatch[1], 10);
+      const unit = ageMatch[2];
       lastMessageAge = unit === "h" ? val * 3600 : unit === "m" ? val * 60 : val;
     }
 
-    // Try to extract status hint from text
-    let statusHint = null;
-    if (/\b(active|running)\b/i.test(line)) statusHint = "active";
-    if (/\b(idle)\b/i.test(line)) statusHint = "idle";
-
-    // Try to extract last message snippet
-    const msgMatch = line.match(/last:\s*"?(.+?)"?\s*$/);
-    const lastMessage = msgMatch ? msgMatch[1].trim() : null;
-
-    sessions.push({ key: sessionKey, agentId, lastMessageAge, statusHint, lastMessage });
+    sessions.push({
+      key: match[0],
+      agentId,
+      lastMessageAge,
+    });
   }
   return sessions;
+}
+
+async function getSessionsList(statusText) {
+  // Parse sessions from the already-fetched status output
+  return parseSessionsFromStatus(statusText);
+}
+
+// parseSessionsText removed — now using parseSessionsFromStatus which parses
+// the `openclaw status` output directly (more reliable, shows ALL agents).
 }
 
 /**
@@ -307,10 +286,9 @@ function parseHeartbeat(statusText) {
 }
 
 async function buildAgentStates() {
-  const [statusText, sessions] = await Promise.all([
-    getOpenClawStatus(),
-    getSessionsList(),
-  ]);
+  // Get status first, then parse sessions from the same output
+  const statusText = await getOpenClawStatus();
+  const sessions = await getSessionsList(statusText);
 
   const heartbeats = parseHeartbeat(statusText);
   const agents = [];
