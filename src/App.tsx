@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { Scene } from "./engine/Scene";
 import { Sidebar } from "./ui/Sidebar";
 import { ActivityFeed } from "./ui/ActivityFeed";
+import { Timeline } from "./ui/Timeline";
+import { Metrics } from "./ui/Metrics";
+import { Heatmap } from "./ui/Heatmap";
 import { useAgentStore } from "./data/AgentStore";
 import { startWSClient, stopWSClient } from "./data/ws-client";
 
@@ -28,6 +31,9 @@ export function App() {
           selectedZone={selectedZone}
           onZoneClick={setSelectedZone}
         />
+        <Metrics />
+        <Timeline />
+        <Heatmap />
         <ActivityFeed />
       </div>
 
