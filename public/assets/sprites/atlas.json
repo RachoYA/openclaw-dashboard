@@ -1,0 +1,185 @@
+{
+  "characters": {
+    "analyst": {
+      "file": "sprites/characters/analyst.png",
+      "width": 192,
+      "height": 48
+    },
+    "dev1": {
+      "file": "sprites/characters/dev1.png",
+      "width": 192,
+      "height": 48
+    },
+    "dev2": {
+      "file": "sprites/characters/dev2.png",
+      "width": 192,
+      "height": 48
+    },
+    "devops": {
+      "file": "sprites/characters/devops.png",
+      "width": 192,
+      "height": 48
+    },
+    "pm": {
+      "file": "sprites/characters/pm.png",
+      "width": 192,
+      "height": 48
+    },
+    "qa": {
+      "file": "sprites/characters/qa.png",
+      "width": 192,
+      "height": 48
+    }
+  },
+  "furniture": {
+    "bookshelf": {
+      "file": "sprites/furniture/bookshelf.png",
+      "width": 48,
+      "height": 48
+    },
+    "bug_board": {
+      "file": "sprites/furniture/bug_board.png",
+      "width": 48,
+      "height": 48
+    },
+    "chair": {
+      "file": "sprites/furniture/chair.png",
+      "width": 24,
+      "height": 32
+    },
+    "coffee_machine": {
+      "file": "sprites/furniture/coffee_machine.png",
+      "width": 24,
+      "height": 32
+    },
+    "desk": {
+      "file": "sprites/furniture/desk.png",
+      "width": 64,
+      "height": 32
+    },
+    "kanban_board": {
+      "file": "sprites/furniture/kanban_board.png",
+      "width": 64,
+      "height": 48
+    },
+    "monitor": {
+      "file": "sprites/furniture/monitor.png",
+      "width": 24,
+      "height": 32
+    },
+    "plant": {
+      "file": "sprites/furniture/plant.png",
+      "width": 16,
+      "height": 32
+    },
+    "printer": {
+      "file": "sprites/furniture/printer.png",
+      "width": 32,
+      "height": 24
+    },
+    "server_rack": {
+      "file": "sprites/furniture/server_rack.png",
+      "width": 32,
+      "height": 64
+    },
+    "sofa": {
+      "file": "sprites/furniture/sofa.png",
+      "width": 64,
+      "height": 32
+    },
+    "whiteboard": {
+      "file": "sprites/furniture/whiteboard.png",
+      "width": 48,
+      "height": 40
+    }
+  },
+  "icons": {
+    "action_chat": {
+      "file": "sprites/icons/action_chat.png",
+      "width": 24,
+      "height": 24
+    },
+    "action_coding": {
+      "file": "sprites/icons/action_coding.png",
+      "width": 24,
+      "height": 24
+    },
+    "action_deploy": {
+      "file": "sprites/icons/action_deploy.png",
+      "width": 24,
+      "height": 24
+    },
+    "action_research": {
+      "file": "sprites/icons/action_research.png",
+      "width": 24,
+      "height": 24
+    },
+    "action_review": {
+      "file": "sprites/icons/action_review.png",
+      "width": 24,
+      "height": 24
+    },
+    "action_testing": {
+      "file": "sprites/icons/action_testing.png",
+      "width": 24,
+      "height": 24
+    },
+    "status_active": {
+      "file": "sprites/icons/status_active.png",
+      "width": 24,
+      "height": 24
+    },
+    "status_error": {
+      "file": "sprites/icons/status_error.png",
+      "width": 24,
+      "height": 24
+    },
+    "status_idle": {
+      "file": "sprites/icons/status_idle.png",
+      "width": 24,
+      "height": 24
+    },
+    "status_sleeping": {
+      "file": "sprites/icons/status_sleeping.png",
+      "width": 24,
+      "height": 24
+    }
+  },
+  "ui": {
+    "feed_item_bg": {
+      "file": "sprites/ui/feed_item_bg.png",
+      "width": 300,
+      "height": 32
+    },
+    "panel_bg": {
+      "file": "sprites/ui/panel_bg.png",
+      "width": 200,
+      "height": 300
+    },
+    "progress_bg": {
+      "file": "sprites/ui/progress_bg.png",
+      "width": 100,
+      "height": 12
+    },
+    "progress_fill_green": {
+      "file": "sprites/ui/progress_fill_green.png",
+      "width": 100,
+      "height": 12
+    },
+    "progress_fill_red": {
+      "file": "sprites/ui/progress_fill_red.png",
+      "width": 100,
+      "height": 12
+    },
+    "progress_fill_yellow": {
+      "file": "sprites/ui/progress_fill_yellow.png",
+      "width": 100,
+      "height": 12
+    },
+    "speech_bubble": {
+      "file": "sprites/ui/speech_bubble.png",
+      "width": 120,
+      "height": 48
+    }
+  }
+}
