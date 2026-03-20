@@ -1,5 +1,5 @@
 /** Agent activity state — drives animation */
-export type AgentStatus = "idle" | "working" | "talking" | "thinking" | "sleeping" | "celebrating";
+export type AgentStatus = "idle" | "working" | "talking" | "thinking" | "sleeping" | "celebrating" | "reviewing" | "deploying" | "testing" | "waiting";
 
 /** Direction an agent faces on the isometric grid */
 export type Direction = "se" | "sw" | "ne" | "nw";

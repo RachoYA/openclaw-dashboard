@@ -1,4 +1,5 @@
 import type { AgentState } from "@/data/types";
+import { useActivityStore } from "@/data/ActivityStore";
 
 const STATUS_LABELS: Record<string, string> = {
   idle: "Ожидает",
@@ -7,6 +8,10 @@ const STATUS_LABELS: Record<string, string> = {
   thinking: "Думает",
   sleeping: "Спит",
   celebrating: "Празднует",
+  reviewing: "Ревьюит",
+  deploying: "Деплоит",
+  testing: "Тестирует",
+  waiting: "Ожидает ответа",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -16,6 +21,10 @@ const STATUS_COLORS: Record<string, string> = {
   thinking: "#ff8906",
   sleeping: "#525272",
   celebrating: "#e53170",
+  reviewing: "#3da9fc",
+  deploying: "#ff8906",
+  testing: "#3da9fc",
+  waiting: "#a7a9be",
 };
 
 interface SidebarProps {
@@ -36,13 +45,34 @@ export function Sidebar({ agent, onClose }: SidebarProps) {
   }
 
   const color = STATUS_COLORS[agent.status] || "#a7a9be";
+  const allEvents = useActivityStore((s) => s.events);
+  const agentEvents = allEvents.filter((e) => e.agentId === agent.id).slice(-5).reverse();
+  const unreadCount = agentEvents.filter(
+    (e) => Date.now() - new Date(e.timestamp).getTime() < 60000
+  ).length;
 
   return (
     <div style={containerStyle}>
       {/* Header */}
       <div style={{ padding: "20px", borderBottom: "1px solid #2a2a4a" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0, fontSize: "18px", color: "#fffffe" }}>{agent.name}</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h2 style={{ margin: 0, fontSize: "18px", color: "#fffffe" }}>{agent.name}</h2>
+            {unreadCount > 0 && (
+              <span style={{
+                background: "#e53170",
+                color: "#fff",
+                fontSize: "10px",
+                fontWeight: 700,
+                borderRadius: "10px",
+                padding: "1px 6px",
+                minWidth: "18px",
+                textAlign: "center",
+              }}>
+                {unreadCount}
+              </span>
+            )}
+          </div>
           <button
             onClick={onClose}
             style={{
@@ -84,6 +114,23 @@ export function Sidebar({ agent, onClose }: SidebarProps) {
           <InfoRow label="Активен" value={new Date(agent.lastActiveAt).toLocaleTimeString("ru")} />
         )}
         <InfoRow label="Позиция" value={`(${agent.tileX}, ${agent.tileY})`} />
+
+        {/* Recent activity */}
+        {agentEvents.length > 0 && (
+          <div style={{ marginTop: "16px" }}>
+            <div style={{ fontSize: "11px", color: "#525272", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
+              Последние действия
+            </div>
+            {agentEvents.map((ev) => (
+              <div key={ev.id} style={{ fontSize: "12px", color: "#a7a9be", marginBottom: "6px", lineHeight: 1.3 }}>
+                <span style={{ color: "#525272", marginRight: "4px" }}>
+                  {new Date(ev.timestamp).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+                {ev.text}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
