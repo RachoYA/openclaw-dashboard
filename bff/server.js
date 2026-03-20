@@ -245,9 +245,9 @@ function findAgentSessions(agentId, sessions) {
 }
 
 function inferStatus(agentId, sessions, heartbeatActive) {
-  // Don't force sleeping just because heartbeat is unknown —
-  // only sleep if heartbeat is explicitly disabled (false), not undefined
-  if (heartbeatActive === false) return "sleeping";
+  // heartbeat "disabled" means polling is not configured, NOT that agent is down.
+  // Only use heartbeat as a HINT, never as sole indicator.
+  // Sessions are the primary activity source.
 
   const agentSessions = findAgentSessions(agentId, sessions);
 
@@ -268,7 +268,8 @@ function inferStatus(agentId, sessions, heartbeatActive) {
   if (minAge < 180) return "thinking";
   if (minAge < 600) return "idle";
   if (minAge < 1800) return "waiting";
-  return "sleeping";
+  // Only sleeping after 30+ min inactivity in sessions
+  return heartbeatActive === false ? "idle" : "sleeping";
 }
 
 /**
