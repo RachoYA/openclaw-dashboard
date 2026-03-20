@@ -31,8 +31,9 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
 
   // Zoom & pan state
   const [zoom, setZoom] = useState(1);
+  const [isDragging, setIsDragging] = useState(false);
   const panRef = useRef({ x: 0, y: 0 });
-  const dragRef = useRef({ dragging: false, startX: 0, startY: 0, panStartX: 0, panStartY: 0 });
+  const dragRef = useRef({ dragging: false, startX: 0, startY: 0, panStartX: 0, panStartY: 0, didDrag: false });
 
   // Day/night cycle
   const getDayPhase = useCallback(() => {
@@ -381,28 +382,71 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     setZoom((z) => Math.min(2.5, Math.max(0.5, z - e.deltaY * 0.001)));
   }, []);
 
-  // --- Pan via drag ---
+  // --- Pan via drag (any mouse button) ---
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 1 || e.shiftKey) { // middle click or shift+drag
-      dragRef.current = { dragging: true, startX: e.clientX, startY: e.clientY, panStartX: panRef.current.x, panStartY: panRef.current.y };
-    }
+    dragRef.current = {
+      dragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      panStartX: panRef.current.x,
+      panStartY: panRef.current.y,
+      didDrag: false,
+    };
   }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (dragRef.current.dragging) {
-      panRef.current.x = dragRef.current.panStartX + (e.clientX - dragRef.current.startX) / zoom;
-      panRef.current.y = dragRef.current.panStartY + (e.clientY - dragRef.current.startY) / zoom;
+    if (!dragRef.current.dragging) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    // Only start dragging after 5px threshold (to allow clicks)
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+      dragRef.current.didDrag = true;
+      setIsDragging(true);
+      panRef.current.x = dragRef.current.panStartX + dx / zoom;
+      panRef.current.y = dragRef.current.panStartY + dy / zoom;
     }
   }, [zoom]);
 
   const handleMouseUp = useCallback(() => {
+    dragRef.current.dragging = false;
+    setIsDragging(false);
+  }, []);
+
+  // --- Touch support for mobile ---
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      dragRef.current = {
+        dragging: true,
+        startX: t.clientX,
+        startY: t.clientY,
+        panStartX: panRef.current.x,
+        panStartY: panRef.current.y,
+        didDrag: false,
+      };
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!dragRef.current.dragging || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dx = t.clientX - dragRef.current.startX;
+    const dy = t.clientY - dragRef.current.startY;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+      dragRef.current.didDrag = true;
+      panRef.current.x = dragRef.current.panStartX + dx / zoom;
+      panRef.current.y = dragRef.current.panStartY + dy / zoom;
+    }
+  }, [zoom]);
+
+  const handleTouchEnd = useCallback(() => {
     dragRef.current.dragging = false;
   }, []);
 
   // --- Click → agent or zone ---
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (dragRef.current.dragging) return;
+      if (dragRef.current.didDrag) return; // was a drag, not a click
       const canvas = canvasRef.current;
       if (!canvas) return;
       const dpr = window.devicePixelRatio || 1;
@@ -465,7 +509,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
   }, [resize, render, handleWheel]);
 
   return (
-    <div ref={containerRef} style={{ width: "100%", height: "100%" }}>
+    <div ref={containerRef} style={{ width: "100%", height: "100%", touchAction: "none" }}>
       <canvas
         ref={canvasRef}
         onClick={handleClick}
@@ -473,7 +517,10 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        style={{ display: "block", cursor: dragRef.current.dragging ? "grabbing" : "pointer" }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ display: "block", cursor: isDragging ? "grabbing" : "grab" }}
       />
     </div>
   );

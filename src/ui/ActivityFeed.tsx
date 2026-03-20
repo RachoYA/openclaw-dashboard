@@ -60,11 +60,12 @@ const containerStyle: React.CSSProperties = {
   position: "absolute",
   bottom: 0,
   left: 0,
-  right: 280, // sidebar width
+  right: 0,
   background: "rgba(15, 14, 23, 0.95)",
   borderTop: "1px solid #2a2a4a",
   maxHeight: "180px",
   overflow: "hidden",
+  zIndex: 5,
 };
 
 const headerStyle: React.CSSProperties = {
