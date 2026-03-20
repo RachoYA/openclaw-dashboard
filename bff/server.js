@@ -233,12 +233,16 @@ async function getAgentCurrentTask(agentId, sessions) {
  *   techlead + recently active → "reviewing"
  */
 function inferStatus(agentId, sessions, heartbeatActive) {
-  if (!heartbeatActive) return "sleeping";
-
+  // Sessions are the primary activity indicator.
+  // Heartbeat "disabled" just means polling is not configured — not that agent is down.
   const agentSessions = sessions?.filter(
     (s) => s.key?.includes(agentId) || s.agentId === agentId
   ) || [];
-  if (agentSessions.length === 0) return "idle";
+
+  // No sessions found — use heartbeat as hint
+  if (agentSessions.length === 0) {
+    return heartbeatActive ? "idle" : "idle"; // Default idle, not sleeping
+  }
 
   const minAge = Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999));
 
@@ -302,8 +306,9 @@ async function buildAgentStates() {
   const taskMap = Object.fromEntries(taskResults);
 
   for (const [id, pos] of Object.entries(AGENT_POSITIONS)) {
-    const isActive = heartbeats[id] !== false;
-    const status = inferStatus(id, sessions, isActive);
+    // heartbeat disabled ≠ inactive — check sessions for real activity
+    const hasHeartbeat = heartbeats[id] === true;
+    const status = inferStatus(id, sessions, hasHeartbeat);
     const lastMessage = getLastMessage(id, sessions);
 
     // Determine lastActiveAt from sessions
