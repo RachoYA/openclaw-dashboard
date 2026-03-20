@@ -105,6 +105,10 @@ async function getOpenClawStatus() {
   }
 }
 
+/**
+ * Get sessions via `openclaw sessions list`.
+ * Tries --json first, falls back to text parsing.
+ */
 async function getSessionsList() {
   try {
     const { stdout } = await exec(
@@ -114,18 +118,74 @@ async function getSessionsList() {
     );
     return JSON.parse(stdout);
   } catch {
-    return null;
+    // Fallback: try without --json
+    try {
+      const { stdout } = await exec(
+        OPENCLAW_BIN,
+        ["sessions", "list"],
+        { timeout: 15000, env: { ...process.env, NO_COLOR: "1" } }
+      );
+      return parseSessionsText(stdout);
+    } catch {
+      return null;
+    }
   }
 }
 
-function inferStatus(agentId, sessions, lastActiveSeconds) {
-  if (lastActiveSeconds === null || lastActiveSeconds > 1800) return "sleeping";
-  if (lastActiveSeconds > 300) return "idle";
-  const hasRecentMessage = sessions?.some(
-    (s) => s.key?.includes(agentId) && s.lastMessageAge < 60
-  );
-  if (hasRecentMessage) return "talking";
-  return "working";
+/**
+ * Parse text output of `openclaw sessions list` into structured data.
+ * Lines like: "agent:pm:telegram:group:-5102635917  active 2m ago  model claude-opus-4-6"
+ */
+function parseSessionsText(text) {
+  if (!text) return null;
+  const sessions = [];
+  for (const line of text.split("\n")) {
+    const match = line.match(/agent:(\w+):/);
+    if (match) {
+      const agentId = match[1];
+      const activeMatch = line.match(/active\s+(\d+)([smh])\s+ago/);
+      let lastMessageAge = 9999;
+      if (activeMatch) {
+        const val = parseInt(activeMatch[1], 10);
+        const unit = activeMatch[2];
+        lastMessageAge = unit === "h" ? val * 3600 : unit === "m" ? val * 60 : val;
+      }
+      sessions.push({ key: line.trim().split(/\s+/)[0], agentId, lastMessageAge });
+    }
+  }
+  return sessions;
+}
+
+/**
+ * Infer agent status from session data.
+ * Uses real lastMessageAge from sessions, not random values.
+ */
+function inferStatus(agentId, sessions, heartbeatActive) {
+  if (!heartbeatActive) return "sleeping";
+
+  // Find the most recent session for this agent
+  const agentSessions = sessions?.filter((s) => s.key?.includes(agentId) || s.agentId === agentId) || [];
+  if (agentSessions.length === 0) return "idle";
+
+  const minAge = Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999));
+
+  if (minAge < 30) return "talking";     // Active conversation in last 30s
+  if (minAge < 120) return "working";    // Activity in last 2 min
+  if (minAge < 300) return "thinking";   // Activity in last 5 min
+  if (minAge < 1800) return "idle";      // Activity in last 30 min
+  return "sleeping";
+}
+
+/**
+ * Extract last message text from session data for an agent.
+ */
+function getLastMessage(agentId, sessions) {
+  const agentSessions = sessions?.filter((s) => s.key?.includes(agentId) || s.agentId === agentId) || [];
+  // If session has lastMessage field
+  for (const s of agentSessions) {
+    if (s.lastMessage) return s.lastMessage;
+  }
+  return null;
 }
 
 function parseHeartbeat(statusText) {
@@ -150,17 +210,26 @@ async function buildAgentStates() {
 
   for (const [id, pos] of Object.entries(AGENT_POSITIONS)) {
     const isActive = heartbeats[id] !== false;
-    const lastActiveSeconds = isActive ? Math.floor(Math.random() * 120) : 9999;
-    const status = inferStatus(id, sessions, isActive ? lastActiveSeconds : null);
+    const status = inferStatus(id, sessions, isActive);
+    const lastMessage = getLastMessage(id, sessions);
+
+    // Determine lastActiveAt from sessions
+    const agentSessions = sessions?.filter((s) => s.key?.includes(id) || s.agentId === id) || [];
+    const minAge = agentSessions.length > 0
+      ? Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999))
+      : null;
+    const lastActiveAt = minAge !== null && minAge < 3600
+      ? new Date(Date.now() - minAge * 1000).toISOString()
+      : null;
 
     agents.push({
       id,
       name: AGENT_NAMES[id] || id,
       role: AGENT_ROLES[id] || "Agent",
       status,
-      currentTask: null,
-      lastMessage: null,
-      lastActiveAt: isActive ? new Date().toISOString() : null,
+      currentTask: null, // TODO Phase 4: extract from session history context
+      lastMessage,
+      lastActiveAt,
       tileX: pos.tileX,
       tileY: pos.tileY,
       direction: pos.direction,
