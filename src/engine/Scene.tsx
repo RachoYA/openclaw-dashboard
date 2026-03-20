@@ -1,11 +1,14 @@
 import { useRef, useEffect, useCallback } from "react";
 import type { AgentState } from "@/data/types";
-import { type Theme, PALETTES } from "@/hooks/useTheme";
 import { tileToScreen, TILE_WIDTH, TILE_HEIGHT } from "./isometric";
 import { getSprite, SPRITE_SIZE } from "./SpriteGenerator";
 import { ANIMATIONS } from "./Animations";
 import { type MessageParticle, createParticle, updateParticle, drawParticle } from "./MessageParticle";
 import { OFFICE_ZONES, getZoneAt, drawZoneLabel } from "./OfficeZones";
+import {
+  preloadSprites, drawAgentSprite, drawFurniture, drawActionIcon,
+  drawSpeechBubble, drawStatusIcon, SPRITE_W, SPRITE_H,
+} from "./SpriteLoader";
 
 const GRID_COLS = 10;
 const GRID_ROWS = 8;
@@ -16,15 +19,21 @@ const STATUS_COLORS: Record<string, string> = {
   deploying: "#ff8906", testing: "#3da9fc", waiting: "#a7a9be",
 };
 
+export interface SceneHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomReset: () => void;
+}
+
 interface SceneProps {
   agents: AgentState[];
   onAgentClick: (id: string) => void;
   selectedZone?: string | null;
   onZoneClick?: (zoneId: string | null) => void;
-  theme?: Theme;
+  sceneRef?: React.MutableRefObject<SceneHandle | null>;
 }
 
-export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme = "light" }: SceneProps) {
+export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRef }: SceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef(0);
@@ -39,6 +48,17 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
   // Pinch-to-zoom state
   const pinchRef = useRef({ active: false, startDist: 0, startZoom: 1 });
 
+  // Expose zoom controls
+  useEffect(() => {
+    if (sceneRef) {
+      sceneRef.current = {
+        zoomIn: () => { zoomRef.current = Math.min(3, zoomRef.current * 1.25); },
+        zoomOut: () => { zoomRef.current = Math.max(0.3, zoomRef.current / 1.25); },
+        zoomReset: () => { zoomRef.current = 1; panRef.current = { x: 0, y: 0 }; },
+      };
+    }
+  }, [sceneRef]);
+
   // Props in refs for render loop
   const agentsRef = useRef(agents);
   agentsRef.current = agents;
@@ -48,8 +68,6 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
   onAgentClickRef.current = onAgentClick;
   const onZoneClickRef = useRef(onZoneClick);
   onZoneClickRef.current = onZoneClick;
-  const themeRef = useRef(theme);
-  themeRef.current = theme;
 
   const getDayPhase = () => {
     const h = new Date().getHours();
@@ -101,33 +119,19 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
     ctx.scale(zoom, zoom);
     ctx.translate(-W / 2, -H / 2);
 
-    // --- Background (theme-aware) ---
-    const pal = PALETTES[themeRef.current];
-    const isDark = themeRef.current === "dark";
-
-    if (isDark) {
-      const gradColors: Record<string, [string, string]> = {
-        dawn: ["#1a0a2e", "#2d1545"], day: [pal.bg1, pal.bg2],
-        dusk: ["#1a1020", "#2d1a25"], night: ["#050510", "#0a0a18"],
-      };
-      const [g1, g2] = gradColors[phase] || gradColors.day;
-      const grad = ctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, g1); grad.addColorStop(1, g2);
-      ctx.fillStyle = grad;
-    } else {
-      const gradColors: Record<string, [string, string]> = {
-        dawn: ["#fff5e6", "#ffecd2"], day: [pal.bg1, pal.bg2],
-        dusk: ["#f5e6f0", "#edd8e8"], night: ["#e8e8f0", "#dddde8"],
-      };
-      const [g1, g2] = gradColors[phase] || gradColors.day;
-      const grad = ctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, g1); grad.addColorStop(1, g2);
-      ctx.fillStyle = grad;
-    }
+    // --- Background ---
+    const gradColors: Record<string, [string, string]> = {
+      dawn: ["#1a0a2e", "#2d1545"], day: ["#0f0e17", "#1a1a2e"],
+      dusk: ["#1a1020", "#2d1a25"], night: ["#050510", "#0a0a18"],
+    };
+    const [g1, g2] = gradColors[phase] || gradColors.day;
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, g1); grad.addColorStop(1, g2);
+    ctx.fillStyle = grad;
     ctx.fillRect(-W, -H, W * 3, H * 3);
 
-    if (phase === "night" && isDark) {
-      ctx.fillStyle = pal.nightOverlay; ctx.fillRect(-W, -H, W * 3, H * 3);
+    if (phase === "night") {
+      ctx.fillStyle = "rgba(0,0,20,0.3)"; ctx.fillRect(-W, -H, W * 3, H * 3);
       ctx.fillStyle = "#fff";
       for (let i = 0; i < 30; i++) {
         const sx = (Math.sin(i * 127.1) * 0.5 + 0.5) * W;
@@ -137,7 +141,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
       }
       ctx.globalAlpha = 1;
     }
-    if ((phase === "dawn" || phase === "dusk") && isDark) {
+    if (phase === "dawn" || phase === "dusk") {
       ctx.fillStyle = phase === "dawn" ? "rgba(255,137,6,0.06)" : "rgba(229,49,112,0.06)";
       ctx.fillRect(-W, -H, W * 3, H * 3);
     }
@@ -153,36 +157,32 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
         ctx.lineTo(sx, sy + hh); ctx.lineTo(sx - hw, sy);
         ctx.closePath();
         const zone = getZoneAt(col, row);
-        const isLt = (col + row) % 2 === 0;
+        const isLight = (col + row) % 2 === 0;
         if (zone) {
-          const zoneColors = pal.zones[zone.id as keyof typeof pal.zones];
-          if (zoneColors) {
-            ctx.fillStyle = isLt ? zoneColors.floor : zoneColors.alt;
-          } else {
-            ctx.fillStyle = isDark
-              ? (isLt ? zone.floorColor : zone.floorColorAlt)
-              : (isLt ? pal.floorLight : pal.floorDark);
-          }
-          if (selZone === zone.id) ctx.fillStyle = isLt ? pal.floorZoneHighlight1 : pal.floorZoneHighlight2;
+          ctx.fillStyle = isLight ? zone.floorColor : zone.floorColorAlt;
+          if (selZone === zone.id) ctx.fillStyle = isLight ? "#2a1f5a" : "#332466";
         } else {
-          ctx.fillStyle = isLt ? pal.floorLight : pal.floorDark;
+          ctx.fillStyle = isLight ? "#1a1a2e" : "#16213e";
         }
         ctx.fill();
-        ctx.strokeStyle = selZone && zone?.id === selZone ? pal.gridLineActive : pal.gridLine;
+        ctx.strokeStyle = selZone && zone?.id === selZone ? "#7f5af0" : "#2a2a4a";
         ctx.lineWidth = selZone && zone?.id === selZone ? 1 : 0.5;
         ctx.stroke();
       }
     }
 
-    // Zone labels + furniture
+    // Zone labels + furniture (PNG sprites with emoji fallback)
     for (const zone of OFFICE_ZONES) drawZoneLabel(ctx, zone, offsetX, offsetY, selZone === zone.id);
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const zone of OFFICE_ZONES) {
       for (const item of zone.furniture) {
         const { x, y } = tileToScreen(item.col, item.row);
-        ctx.font = "16px serif";
         ctx.globalAlpha = selZone && selZone !== zone.id ? 0.3 : 0.8;
-        ctx.fillText(item.emoji, x + offsetX, y + offsetY - 8);
+        // Try PNG sprite, fall back to emoji
+        if (!drawFurniture(ctx, item.emoji, x + offsetX, y + offsetY)) {
+          ctx.font = "16px serif";
+          ctx.fillText(item.emoji, x + offsetX, y + offsetY - 8);
+        }
       }
     }
     ctx.globalAlpha = 1;
@@ -192,13 +192,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
       const sx = x + offsetX, sy = y + offsetY;
       if (selZone && getZoneAt(agent.tileX, agent.tileY)?.id !== selZone) ctx.globalAlpha = 0.25;
-      ctx.fillStyle = isDark ? "#3d2b1f" : "#c4a882";
+      ctx.fillStyle = "#3d2b1f";
       ctx.beginPath();
       ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 16, sy + 4);
       ctx.lineTo(sx, sy + 12); ctx.lineTo(sx - 16, sy + 4);
       ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = isDark ? "#5c4033" : "#a08060"; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = isDark ? "#0f0e17" : "#e8e8ed"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
+      ctx.strokeStyle = "#5c4033"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = "#0f0e17"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
       ctx.fillStyle = "#2cb67d"; ctx.fillRect(sx - 4, sy - 11, 8, 6);
       ctx.globalAlpha = 1;
     }
@@ -217,49 +217,63 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
 
       // Shadow
       ctx.beginPath(); ctx.ellipse(sx, sy + 2, 16, 6, 0, 0, Math.PI * 2);
-      ctx.fillStyle = pal.shadow; ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fill();
 
-      // Sprite
-      const sprite = getSprite(agent.role);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sprite, sx - SPRITE_SIZE / 2, agentY, SPRITE_SIZE, SPRITE_SIZE);
-      ctx.imageSmoothingEnabled = true;
+      // Sprite — try PNG spritesheet, fall back to procedural
+      const drewPng = drawAgentSprite(ctx, agent.id, agent.status, sx, sy + 4, t, 1.2);
+      if (!drewPng) {
+        const sprite = getSprite(agent.role);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(sprite, sx - SPRITE_SIZE / 2, agentY, SPRITE_SIZE, SPRITE_SIZE);
+        ctx.imageSmoothingEnabled = true;
+      }
 
       // Status dot + pulse
       const color = STATUS_COLORS[agent.status] || "#a7a9be";
-      ctx.beginPath(); ctx.arc(sx + SPRITE_SIZE / 2 - 2, agentY + 4, 4, 0, Math.PI * 2);
+      const dotX = sx + (drewPng ? SPRITE_W * 0.6 : SPRITE_SIZE / 2) - 2;
+      const dotY = agentY + 4;
+      ctx.beginPath(); ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = isDark ? "#0f0e17" : "#ffffff"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.strokeStyle = "#0f0e17"; ctx.lineWidth = 1.5; ctx.stroke();
       if (isActive) {
-        ctx.beginPath(); ctx.arc(sx + SPRITE_SIZE / 2 - 2, agentY + 4, 7, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(dotX, dotY, 7, 0, Math.PI * 2);
         ctx.strokeStyle = color; ctx.globalAlpha = Math.sin(t * 0.005) * 0.3 + 0.5;
         ctx.lineWidth = 1.5; ctx.stroke();
         ctx.globalAlpha = selZone ? (getZoneAt(agent.tileX, agent.tileY)?.id === selZone ? 1 : 0.2) : 1;
       }
 
-      // Animation overlay
-      const anim = ANIMATIONS[agent.status];
-      if (anim) anim(ctx, sx, agentY, t);
+      // Action icon (PNG) or animation overlay (procedural fallback)
+      if (!drawActionIcon(ctx, agent.status, sx, agentY)) {
+        const anim = ANIMATIONS[agent.status];
+        if (anim) anim(ctx, sx, agentY, t);
+      }
+
+      // Status icon next to name
+      drawStatusIcon(ctx, agent.status, sx + 30, sy + 10);
 
       // Name + role
       ctx.font = "bold 11px -apple-system, sans-serif";
-      ctx.textAlign = "center"; ctx.fillStyle = pal.text;
+      ctx.textAlign = "center"; ctx.fillStyle = "#fffffe";
       ctx.fillText(agent.name, sx, sy + 16);
-      ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = pal.textMuted;
+      ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
       ctx.fillText(agent.role, sx, sy + 27);
 
-      // Task bubble
+      // Task bubble — try PNG speech bubble, fall back to canvas
       if (agent.currentTask && isActive) {
         const bubbleY = agentY - 16;
         const text = agent.currentTask.length > 22 ? agent.currentTask.slice(0, 20) + "…" : agent.currentTask;
         const tw = ctx.measureText(text).width;
         const pad = 8;
-        ctx.fillStyle = pal.surface;
-        ctx.beginPath(); ctx.roundRect(sx - tw / 2 - pad, bubbleY - 9, tw + pad * 2, 18, 8); ctx.fill();
-        ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
-        ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = pal.text;
+
+        const bubbleW = tw + pad * 2 + 10;
+        if (!drawSpeechBubble(ctx, sx, bubbleY + 5, bubbleW, 24)) {
+          ctx.fillStyle = "rgba(15,14,23,0.92)";
+          ctx.beginPath(); ctx.roundRect(sx - tw / 2 - pad, bubbleY - 9, tw + pad * 2, 18, 8); ctx.fill();
+          ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
+        }
+        ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#fffffe";
         ctx.fillText(text, sx, bubbleY);
-        ctx.fillStyle = pal.surface;
+        ctx.fillStyle = "rgba(15,14,23,0.92)";
         ctx.beginPath(); ctx.moveTo(sx - 4, bubbleY + 9);
         ctx.lineTo(sx + 4, bubbleY + 9); ctx.lineTo(sx, bubbleY + 14); ctx.closePath(); ctx.fill();
       }
@@ -296,20 +310,25 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
 
     ctx.restore(); // undo zoom
 
-    // --- HUD (not zoomed) ---
+    // --- HUD (not zoomed, responsive) ---
     const phaseIcons: Record<string, string> = { dawn: "🌅", day: "☀️", dusk: "🌇", night: "🌙" };
+    const isMobileCanvas = W < 500;
+    const hudFontTitle = isMobileCanvas ? "bold 14px -apple-system, sans-serif" : "bold 18px -apple-system, sans-serif";
+    const hudFontSub = isMobileCanvas ? "10px -apple-system, sans-serif" : "12px -apple-system, sans-serif";
+
     ctx.textAlign = "left";
-    ctx.font = "bold 18px -apple-system, sans-serif"; ctx.fillStyle = pal.text;
-    ctx.fillText("🐾 OpenClaw Office", 16, 28);
+    ctx.font = hudFontTitle; ctx.fillStyle = "#fffffe";
+    ctx.fillText(isMobileCanvas ? "🐾 OpenClaw" : "🐾 OpenClaw Office", 12, isMobileCanvas ? 24 : 28);
     const active = currentAgents.filter((a) => a.status !== "idle" && a.status !== "sleeping").length;
-    ctx.font = "12px -apple-system, sans-serif"; ctx.fillStyle = pal.textSecondary;
-    ctx.fillText(`${currentAgents.length} agents · ${active} active  ${phaseIcons[phase] || ""}`, 16, 46);
+    ctx.font = hudFontSub; ctx.fillStyle = "#a7a9be";
+    ctx.fillText(`${currentAgents.length} agents · ${active} active ${phaseIcons[phase] || ""}`, 12, isMobileCanvas ? 40 : 46);
     ctx.textAlign = "right";
-    ctx.font = "11px -apple-system, monospace"; ctx.fillStyle = pal.textMuted;
-    ctx.fillText(new Date().toLocaleTimeString("ru"), W - 16, 28);
+    ctx.font = isMobileCanvas ? "10px -apple-system, monospace" : "11px -apple-system, monospace";
+    ctx.fillStyle = "#525272";
+    ctx.fillText(new Date().toLocaleTimeString("ru"), W - 12, isMobileCanvas ? 24 : 28);
     if (zoom !== 1) {
-      ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = pal.textMuted;
-      ctx.fillText(`${Math.round(zoom * 100)}%`, W - 16, 44);
+      ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
+      ctx.fillText(`${Math.round(zoom * 100)}%`, W - 12, isMobileCanvas ? 38 : 44);
     }
 
     ctx.restore();
@@ -362,7 +381,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
     if (e.touches.length === 0) {
       // Tap detection (no pinch, no drag)
       if (dragRef.current.active && !dragRef.current.didMove && !pinchRef.current.active) {
-        handleTapAt(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+        handleTapAtRef.current(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
       }
       dragRef.current.active = false;
       pinchRef.current.active = false;
@@ -394,14 +413,8 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
     }
   }, []);
 
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === "touch") return;
-    if (!dragRef.current.didMove) handleTapAt(e.clientX, e.clientY);
-    dragRef.current.active = false;
-  }, []);
-
-  // ---------- Click/tap detection ----------
-  const handleTapAt = useCallback((clientX: number, clientY: number) => {
+  // ---------- Click/tap detection (ref to avoid stale closure issues) ----------
+  const handleTapAtRef = useRef((clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
@@ -413,10 +426,11 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
     const offsetX = W / 2 + panRef.current.x;
     const offsetY = H / 2 - 50 + panRef.current.y;
 
+    // Wider hitbox for easier clicking (32px radius)
     const currentAgents = agentsRef.current;
     for (const agent of currentAgents) {
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
-      if (Math.abs(mx - (x + offsetX)) < 24 && Math.abs(my - (y + offsetY - SPRITE_SIZE / 2)) < 28) {
+      if (Math.abs(mx - (x + offsetX)) < 32 && Math.abs(my - (y + offsetY - SPRITE_SIZE / 2)) < 36) {
         onAgentClickRef.current(agent.id);
         return;
       }
@@ -435,9 +449,16 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme =
       }
       onZoneClickRef.current(null);
     }
+  });
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    if (!dragRef.current.didMove) handleTapAtRef.current(e.clientX, e.clientY);
+    dragRef.current.active = false;
   }, []);
 
   useEffect(() => {
+    preloadSprites();
     resize();
     const canvas = canvasRef.current;
     window.addEventListener("resize", resize);
