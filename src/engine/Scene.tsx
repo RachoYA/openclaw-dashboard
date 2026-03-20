@@ -19,14 +19,21 @@ const STATUS_COLORS: Record<string, string> = {
   deploying: "#ff8906", testing: "#3da9fc", waiting: "#a7a9be",
 };
 
+export interface SceneHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomReset: () => void;
+}
+
 interface SceneProps {
   agents: AgentState[];
   onAgentClick: (id: string) => void;
   selectedZone?: string | null;
   onZoneClick?: (zoneId: string | null) => void;
+  sceneRef?: React.MutableRefObject<SceneHandle | null>;
 }
 
-export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: SceneProps) {
+export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRef }: SceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef(0);
@@ -40,6 +47,17 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
 
   // Pinch-to-zoom state
   const pinchRef = useRef({ active: false, startDist: 0, startZoom: 1 });
+
+  // Expose zoom controls
+  useEffect(() => {
+    if (sceneRef) {
+      sceneRef.current = {
+        zoomIn: () => { zoomRef.current = Math.min(3, zoomRef.current * 1.25); },
+        zoomOut: () => { zoomRef.current = Math.max(0.3, zoomRef.current / 1.25); },
+        zoomReset: () => { zoomRef.current = 1; panRef.current = { x: 0, y: 0 }; },
+      };
+    }
+  }, [sceneRef]);
 
   // Props in refs for render loop
   const agentsRef = useRef(agents);
@@ -292,20 +310,25 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
 
     ctx.restore(); // undo zoom
 
-    // --- HUD (not zoomed) ---
+    // --- HUD (not zoomed, responsive) ---
     const phaseIcons: Record<string, string> = { dawn: "🌅", day: "☀️", dusk: "🌇", night: "🌙" };
+    const isMobileCanvas = W < 500;
+    const hudFontTitle = isMobileCanvas ? "bold 14px -apple-system, sans-serif" : "bold 18px -apple-system, sans-serif";
+    const hudFontSub = isMobileCanvas ? "10px -apple-system, sans-serif" : "12px -apple-system, sans-serif";
+
     ctx.textAlign = "left";
-    ctx.font = "bold 18px -apple-system, sans-serif"; ctx.fillStyle = "#fffffe";
-    ctx.fillText("🐾 OpenClaw Office", 16, 28);
+    ctx.font = hudFontTitle; ctx.fillStyle = "#fffffe";
+    ctx.fillText(isMobileCanvas ? "🐾 OpenClaw" : "🐾 OpenClaw Office", 12, isMobileCanvas ? 24 : 28);
     const active = currentAgents.filter((a) => a.status !== "idle" && a.status !== "sleeping").length;
-    ctx.font = "12px -apple-system, sans-serif"; ctx.fillStyle = "#a7a9be";
-    ctx.fillText(`${currentAgents.length} agents · ${active} active  ${phaseIcons[phase] || ""}`, 16, 46);
+    ctx.font = hudFontSub; ctx.fillStyle = "#a7a9be";
+    ctx.fillText(`${currentAgents.length} agents · ${active} active ${phaseIcons[phase] || ""}`, 12, isMobileCanvas ? 40 : 46);
     ctx.textAlign = "right";
-    ctx.font = "11px -apple-system, monospace"; ctx.fillStyle = "#525272";
-    ctx.fillText(new Date().toLocaleTimeString("ru"), W - 16, 28);
+    ctx.font = isMobileCanvas ? "10px -apple-system, monospace" : "11px -apple-system, monospace";
+    ctx.fillStyle = "#525272";
+    ctx.fillText(new Date().toLocaleTimeString("ru"), W - 12, isMobileCanvas ? 24 : 28);
     if (zoom !== 1) {
       ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
-      ctx.fillText(`${Math.round(zoom * 100)}%`, W - 16, 44);
+      ctx.fillText(`${Math.round(zoom * 100)}%`, W - 12, isMobileCanvas ? 38 : 44);
     }
 
     ctx.restore();
@@ -358,7 +381,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     if (e.touches.length === 0) {
       // Tap detection (no pinch, no drag)
       if (dragRef.current.active && !dragRef.current.didMove && !pinchRef.current.active) {
-        handleTapAt(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+        handleTapAtRef.current(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
       }
       dragRef.current.active = false;
       pinchRef.current.active = false;
@@ -390,14 +413,8 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     }
   }, []);
 
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === "touch") return;
-    if (!dragRef.current.didMove) handleTapAt(e.clientX, e.clientY);
-    dragRef.current.active = false;
-  }, []);
-
-  // ---------- Click/tap detection ----------
-  const handleTapAt = useCallback((clientX: number, clientY: number) => {
+  // ---------- Click/tap detection (ref to avoid stale closure issues) ----------
+  const handleTapAtRef = useRef((clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
@@ -409,10 +426,11 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     const offsetX = W / 2 + panRef.current.x;
     const offsetY = H / 2 - 50 + panRef.current.y;
 
+    // Wider hitbox for easier clicking (32px radius)
     const currentAgents = agentsRef.current;
     for (const agent of currentAgents) {
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
-      if (Math.abs(mx - (x + offsetX)) < 24 && Math.abs(my - (y + offsetY - SPRITE_SIZE / 2)) < 28) {
+      if (Math.abs(mx - (x + offsetX)) < 32 && Math.abs(my - (y + offsetY - SPRITE_SIZE / 2)) < 36) {
         onAgentClickRef.current(agent.id);
         return;
       }
@@ -431,6 +449,12 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       }
       onZoneClickRef.current(null);
     }
+  });
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    if (!dragRef.current.didMove) handleTapAtRef.current(e.clientX, e.clientY);
+    dragRef.current.active = false;
   }, []);
 
   useEffect(() => {
