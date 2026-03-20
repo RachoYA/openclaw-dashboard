@@ -7,6 +7,10 @@ const STATUS_LABELS: Record<string, string> = {
   thinking: "Думает",
   sleeping: "Спит",
   celebrating: "Празднует",
+  reviewing: "Ревьюит",
+  deploying: "Деплоит",
+  testing: "Тестирует",
+  waiting: "Ожидает ответа",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -16,6 +20,10 @@ const STATUS_COLORS: Record<string, string> = {
   thinking: "#ff8906",
   sleeping: "#525272",
   celebrating: "#e53170",
+  reviewing: "#3da9fc",
+  deploying: "#ff8906",
+  testing: "#3da9fc",
+  waiting: "#a7a9be",
 };
 
 interface SidebarProps {
