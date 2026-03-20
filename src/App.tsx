@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Scene } from "./engine/Scene";
 import { Sidebar } from "./ui/Sidebar";
+import { ActivityFeed } from "./ui/ActivityFeed";
 import { useAgentStore } from "./data/AgentStore";
 
 export function App() {
@@ -13,6 +14,7 @@ export function App() {
       {/* Canvas area */}
       <div style={{ flex: 1, position: "relative" }}>
         <Scene agents={agents} onAgentClick={setSelectedId} />
+        <ActivityFeed />
       </div>
 
       {/* Sidebar */}

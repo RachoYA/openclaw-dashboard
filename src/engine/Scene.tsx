@@ -3,6 +3,7 @@ import type { AgentState } from "@/data/types";
 import { tileToScreen, TILE_WIDTH, TILE_HEIGHT } from "./isometric";
 import { getSprite, SPRITE_SIZE } from "./SpriteGenerator";
 import { ANIMATIONS } from "./Animations";
+import { type MessageParticle, createParticle, updateParticle, drawParticle } from "./MessageParticle";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -54,6 +55,8 @@ export function Scene({ agents, onAgentClick }: SceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef(0);
+  const particlesRef = useRef<MessageParticle[]>([]);
+  const lastParticleTime = useRef(0);
 
   const resize = useCallback(() => {
     const canvas = canvasRef.current;
@@ -271,6 +274,24 @@ export function Scene({ agents, onAgentClick }: SceneProps) {
         ctx.setLineDash([]);
         ctx.globalAlpha = 1;
       }
+    }
+
+    // --- Message particles ---
+    // Spawn new particles periodically between random agents
+    if (t - lastParticleTime.current > 3000 + Math.random() * 4000 && agents.length >= 2) {
+      lastParticleTime.current = t;
+      const fromIdx = Math.floor(Math.random() * agents.length);
+      let toIdx = Math.floor(Math.random() * agents.length);
+      if (toIdx === fromIdx) toIdx = (toIdx + 1) % agents.length;
+      const from = agents[fromIdx];
+      const to = agents[toIdx];
+      particlesRef.current.push(createParticle(from.tileX, from.tileY, to.tileX, to.tileY, offsetX, offsetY));
+    }
+
+    // Update & draw particles
+    particlesRef.current = particlesRef.current.filter((p) => updateParticle(p, t));
+    for (const p of particlesRef.current) {
+      drawParticle(ctx, p);
     }
 
     // --- Header ---
