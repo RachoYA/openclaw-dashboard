@@ -40,13 +40,24 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
   const particlesRef = useRef<MessageParticle[]>([]);
   const lastParticleTime = useRef(0);
 
-  // All mutable state in refs (no stale closures)
+  // All mutable state in refs
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
-  const dragRef = useRef({ active: false, didMove: false, startX: 0, startY: 0, panStartX: 0, panStartY: 0 });
 
-  // Pinch-to-zoom state
+  // Unified pointer tracking (supports multi-touch for pinch)
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const dragRef = useRef({ active: false, didMove: false, startX: 0, startY: 0, panStartX: 0, panStartY: 0 });
   const pinchRef = useRef({ active: false, startDist: 0, startZoom: 1 });
+
+  // Props in refs
+  const agentsRef = useRef(agents);
+  agentsRef.current = agents;
+  const selectedZoneRef = useRef(selectedZone);
+  selectedZoneRef.current = selectedZone;
+  const onAgentClickRef = useRef(onAgentClick);
+  onAgentClickRef.current = onAgentClick;
+  const onZoneClickRef = useRef(onZoneClick);
+  onZoneClickRef.current = onZoneClick;
 
   // Expose zoom controls
   useEffect(() => {
@@ -58,16 +69,6 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       };
     }
   }, [sceneRef]);
-
-  // Props in refs for render loop
-  const agentsRef = useRef(agents);
-  agentsRef.current = agents;
-  const selectedZoneRef = useRef(selectedZone);
-  selectedZoneRef.current = selectedZone;
-  const onAgentClickRef = useRef(onAgentClick);
-  onAgentClickRef.current = onAgentClick;
-  const onZoneClickRef = useRef(onZoneClick);
-  onZoneClickRef.current = onZoneClick;
 
   const getDayPhase = () => {
     const h = new Date().getHours();
@@ -90,7 +91,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     if (ctx) ctx.scale(dpr, dpr);
   }, []);
 
-  // ---------- Render loop ----------
+  // ===== Render loop =====
   const render = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -113,16 +114,15 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
-    // Apply zoom
     ctx.save();
     ctx.translate(W / 2, H / 2);
     ctx.scale(zoom, zoom);
     ctx.translate(-W / 2, -H / 2);
 
-    // --- Background (light theme) ---
+    // --- Background ---
     const gradColors: Record<string, [string, string]> = {
-      dawn: ["#fff5e6", "#ffecd2"], day: ["#f5f5f7", "#ecedf0"],
-      dusk: ["#f5e6f0", "#edd8e8"], night: ["#e0e0e8", "#d5d5e0"],
+      dawn: ["#1a0a2e", "#2d1545"], day: ["#0f0e17", "#1a1a2e"],
+      dusk: ["#1a1020", "#2d1a25"], night: ["#050510", "#0a0a18"],
     };
     const [g1, g2] = gradColors[phase] || gradColors.day;
     const grad = ctx.createLinearGradient(0, 0, 0, H);
@@ -131,8 +131,8 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     ctx.fillRect(-W, -H, W * 3, H * 3);
 
     if (phase === "night") {
-      ctx.fillStyle = "rgba(100,100,130,0.08)"; ctx.fillRect(-W, -H, W * 3, H * 3);
-      ctx.fillStyle = "#888";
+      ctx.fillStyle = "rgba(0,0,20,0.3)"; ctx.fillRect(-W, -H, W * 3, H * 3);
+      ctx.fillStyle = "#fff";
       for (let i = 0; i < 30; i++) {
         const sx = (Math.sin(i * 127.1) * 0.5 + 0.5) * W;
         const sy = (Math.cos(i * 311.7) * 0.5 + 0.5) * H * 0.3;
@@ -142,7 +142,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       ctx.globalAlpha = 1;
     }
     if (phase === "dawn" || phase === "dusk") {
-      ctx.fillStyle = phase === "dawn" ? "rgba(255,200,100,0.08)" : "rgba(200,100,150,0.06)";
+      ctx.fillStyle = phase === "dawn" ? "rgba(255,137,6,0.06)" : "rgba(229,49,112,0.06)";
       ctx.fillRect(-W, -H, W * 3, H * 3);
     }
 
@@ -157,35 +157,27 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
         ctx.lineTo(sx, sy + hh); ctx.lineTo(sx - hw, sy);
         ctx.closePath();
         const zone = getZoneAt(col, row);
-        const isLight = (col + row) % 2 === 0;
-        // Light theme zone colors
-        const lightZoneColors: Record<string, [string, string]> = {
-          "pm-board": ["#e8e0f5", "#e2d8f0"], "dev-corner": ["#d8f0e0", "#d0ebd8"],
-          "analyst-desk": ["#f0d8e8", "#ebd0e2"], "common-area": ["#e8e8f0", "#e2e2eb"],
-          "qa-lab": ["#d8e8f5", "#d0e2f0"], "devops-room": ["#f0e8d8", "#ebe2d0"],
-        };
+        const isLt = (col + row) % 2 === 0;
         if (zone) {
-          const lc = lightZoneColors[zone.id];
-          ctx.fillStyle = lc ? (isLight ? lc[0] : lc[1]) : (isLight ? "#e8e8ed" : "#dddde5");
-          if (selZone === zone.id) ctx.fillStyle = isLight ? "#d0c8f0" : "#c4bae8";
+          ctx.fillStyle = isLt ? zone.floorColor : zone.floorColorAlt;
+          if (selZone === zone.id) ctx.fillStyle = isLt ? "#2a1f5a" : "#332466";
         } else {
-          ctx.fillStyle = isLight ? "#e8e8ed" : "#dddde5";
+          ctx.fillStyle = isLt ? "#1a1a2e" : "#16213e";
         }
         ctx.fill();
-        ctx.strokeStyle = selZone && zone?.id === selZone ? "#7f5af0" : "#d1d1d6";
+        ctx.strokeStyle = selZone && zone?.id === selZone ? "#7f5af0" : "#2a2a4a";
         ctx.lineWidth = selZone && zone?.id === selZone ? 1 : 0.5;
         ctx.stroke();
       }
     }
 
-    // Zone labels + furniture (PNG sprites with emoji fallback)
+    // Zone labels + furniture
     for (const zone of OFFICE_ZONES) drawZoneLabel(ctx, zone, offsetX, offsetY, selZone === zone.id);
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const zone of OFFICE_ZONES) {
       for (const item of zone.furniture) {
         const { x, y } = tileToScreen(item.col, item.row);
         ctx.globalAlpha = selZone && selZone !== zone.id ? 0.3 : 0.8;
-        // Try PNG sprite, fall back to emoji
         if (!drawFurniture(ctx, item.emoji, x + offsetX, y + offsetY)) {
           ctx.font = "16px serif";
           ctx.fillText(item.emoji, x + offsetX, y + offsetY - 8);
@@ -199,13 +191,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
       const sx = x + offsetX, sy = y + offsetY;
       if (selZone && getZoneAt(agent.tileX, agent.tileY)?.id !== selZone) ctx.globalAlpha = 0.25;
-      ctx.fillStyle = "#c4a882";
+      ctx.fillStyle = "#3d2b1f";
       ctx.beginPath();
       ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 16, sy + 4);
       ctx.lineTo(sx, sy + 12); ctx.lineTo(sx - 16, sy + 4);
       ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "#a08060"; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = "#e8e8ed"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
+      ctx.strokeStyle = "#5c4033"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = "#0f0e17"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
       ctx.fillStyle = "#2cb67d"; ctx.fillRect(sx - 4, sy - 11, 8, 6);
       ctx.globalAlpha = 1;
     }
@@ -224,9 +216,9 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
 
       // Shadow
       ctx.beginPath(); ctx.ellipse(sx, sy + 2, 16, 6, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0,0,0,0.08)"; ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fill();
 
-      // Sprite — try PNG spritesheet, fall back to procedural
+      // Sprite — try PNG, fall back to procedural
       const drewPng = drawAgentSprite(ctx, agent.id, agent.status, sx, sy + 4, t, 1.2);
       if (!drewPng) {
         const sprite = getSprite(agent.role);
@@ -241,7 +233,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       const dotY = agentY + 4;
       ctx.beginPath(); ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.strokeStyle = "#0f0e17"; ctx.lineWidth = 1.5; ctx.stroke();
       if (isActive) {
         ctx.beginPath(); ctx.arc(dotX, dotY, 7, 0, Math.PI * 2);
         ctx.strokeStyle = color; ctx.globalAlpha = Math.sin(t * 0.005) * 0.3 + 0.5;
@@ -249,38 +241,35 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
         ctx.globalAlpha = selZone ? (getZoneAt(agent.tileX, agent.tileY)?.id === selZone ? 1 : 0.2) : 1;
       }
 
-      // Action icon (PNG) or animation overlay (procedural fallback)
+      // Action icon or animation overlay
       if (!drawActionIcon(ctx, agent.status, sx, agentY)) {
         const anim = ANIMATIONS[agent.status];
         if (anim) anim(ctx, sx, agentY, t);
       }
-
-      // Status icon next to name
       drawStatusIcon(ctx, agent.status, sx + 30, sy + 10);
 
       // Name + role
       ctx.font = "bold 11px -apple-system, sans-serif";
-      ctx.textAlign = "center"; ctx.fillStyle = "#1d1d1f";
+      ctx.textAlign = "center"; ctx.fillStyle = "#fffffe";
       ctx.fillText(agent.name, sx, sy + 16);
-      ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#8e8ea0";
+      ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
       ctx.fillText(agent.role, sx, sy + 27);
 
-      // Task bubble — try PNG speech bubble, fall back to canvas
+      // Task bubble
       if (agent.currentTask && isActive) {
         const bubbleY = agentY - 16;
         const text = agent.currentTask.length > 22 ? agent.currentTask.slice(0, 20) + "…" : agent.currentTask;
         const tw = ctx.measureText(text).width;
         const pad = 8;
-
         const bubbleW = tw + pad * 2 + 10;
         if (!drawSpeechBubble(ctx, sx, bubbleY + 5, bubbleW, 24)) {
-          ctx.fillStyle = "rgba(255,255,255,0.95)";
+          ctx.fillStyle = "rgba(15,14,23,0.92)";
           ctx.beginPath(); ctx.roundRect(sx - tw / 2 - pad, bubbleY - 9, tw + pad * 2, 18, 8); ctx.fill();
           ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
         }
-        ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#1d1d1f";
+        ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#fffffe";
         ctx.fillText(text, sx, bubbleY);
-        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.fillStyle = "rgba(15,14,23,0.92)";
         ctx.beginPath(); ctx.moveTo(sx - 4, bubbleY + 9);
         ctx.lineTo(sx + 4, bubbleY + 9); ctx.lineTo(sx, bubbleY + 14); ctx.closePath(); ctx.fill();
       }
@@ -320,108 +309,30 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     // --- HUD (not zoomed, responsive) ---
     const phaseIcons: Record<string, string> = { dawn: "🌅", day: "☀️", dusk: "🌇", night: "🌙" };
     const isMobileCanvas = W < 500;
-    const hudFontTitle = isMobileCanvas ? "bold 14px -apple-system, sans-serif" : "bold 18px -apple-system, sans-serif";
-    const hudFontSub = isMobileCanvas ? "10px -apple-system, sans-serif" : "12px -apple-system, sans-serif";
+    const hudFont = isMobileCanvas ? "bold 14px -apple-system, sans-serif" : "bold 18px -apple-system, sans-serif";
+    const subFont = isMobileCanvas ? "10px -apple-system, sans-serif" : "12px -apple-system, sans-serif";
 
     ctx.textAlign = "left";
-    ctx.font = hudFontTitle; ctx.fillStyle = "#1d1d1f";
+    ctx.font = hudFont; ctx.fillStyle = "#fffffe";
     ctx.fillText(isMobileCanvas ? "🐾 OpenClaw" : "🐾 OpenClaw Office", 12, isMobileCanvas ? 24 : 28);
     const active = currentAgents.filter((a) => a.status !== "idle" && a.status !== "sleeping").length;
-    ctx.font = hudFontSub; ctx.fillStyle = "#6e6e73";
+    ctx.font = subFont; ctx.fillStyle = "#a7a9be";
     ctx.fillText(`${currentAgents.length} agents · ${active} active ${phaseIcons[phase] || ""}`, 12, isMobileCanvas ? 40 : 46);
     ctx.textAlign = "right";
     ctx.font = isMobileCanvas ? "10px -apple-system, monospace" : "11px -apple-system, monospace";
-    ctx.fillStyle = "#8e8ea0";
+    ctx.fillStyle = "#525272";
     ctx.fillText(new Date().toLocaleTimeString("ru"), W - 12, isMobileCanvas ? 24 : 28);
     if (zoom !== 1) {
-      ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#8e8ea0";
+      ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
       ctx.fillText(`${Math.round(zoom * 100)}%`, W - 12, isMobileCanvas ? 38 : 44);
     }
 
     ctx.restore();
     frameRef.current = requestAnimationFrame(render);
-  }, []); // no deps — all via refs
-
-  // ---------- Wheel zoom ----------
-  const handleWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-    zoomRef.current = Math.min(3, Math.max(0.3, zoomRef.current - e.deltaY * 0.001));
   }, []);
 
-  // ---------- Touch: 1-finger pan, 2-finger pinch-to-zoom ----------
-  const handleTouchStart = useCallback((e: TouchEvent) => {
-    e.preventDefault();
-    if (e.touches.length === 1) {
-      const t = e.touches[0];
-      dragRef.current = { active: true, didMove: false, startX: t.clientX, startY: t.clientY,
-        panStartX: panRef.current.x, panStartY: panRef.current.y };
-      pinchRef.current.active = false;
-    } else if (e.touches.length === 2) {
-      dragRef.current.active = false;
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      pinchRef.current = { active: true, startDist: Math.hypot(dx, dy), startZoom: zoomRef.current };
-    }
-  }, []);
-
-  const handleTouchMove = useCallback((e: TouchEvent) => {
-    e.preventDefault();
-    if (pinchRef.current.active && e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const dist = Math.hypot(dx, dy);
-      const scale = dist / pinchRef.current.startDist;
-      zoomRef.current = Math.min(3, Math.max(0.3, pinchRef.current.startZoom * scale));
-    } else if (dragRef.current.active && e.touches.length === 1) {
-      const t = e.touches[0];
-      const dx = t.clientX - dragRef.current.startX;
-      const dy = t.clientY - dragRef.current.startY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-        dragRef.current.didMove = true;
-        panRef.current.x = dragRef.current.panStartX + dx / zoomRef.current;
-        panRef.current.y = dragRef.current.panStartY + dy / zoomRef.current;
-      }
-    }
-  }, []);
-
-  const handleTouchEnd = useCallback((e: TouchEvent) => {
-    if (e.touches.length === 0) {
-      // Tap detection (no pinch, no drag)
-      if (dragRef.current.active && !dragRef.current.didMove && !pinchRef.current.active) {
-        handleTapAtRef.current(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-      }
-      dragRef.current.active = false;
-      pinchRef.current.active = false;
-    } else if (e.touches.length === 1) {
-      // Went from 2 fingers to 1 — restart pan
-      pinchRef.current.active = false;
-      const t = e.touches[0];
-      dragRef.current = { active: true, didMove: false, startX: t.clientX, startY: t.clientY,
-        panStartX: panRef.current.x, panStartY: panRef.current.y };
-    }
-  }, []);
-
-  // ---------- Mouse: drag to pan ----------
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === "touch") return; // handled by touch events
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    dragRef.current = { active: true, didMove: false, startX: e.clientX, startY: e.clientY,
-      panStartX: panRef.current.x, panStartY: panRef.current.y };
-  }, []);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === "touch" || !dragRef.current.active) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      dragRef.current.didMove = true;
-      panRef.current.x = dragRef.current.panStartX + dx / zoomRef.current;
-      panRef.current.y = dragRef.current.panStartY + dy / zoomRef.current;
-    }
-  }, []);
-
-  // ---------- Click/tap detection (ref to avoid stale closure issues) ----------
-  const handleTapAtRef = useRef((clientX: number, clientY: number) => {
+  // ===== Hit test (called on tap/click) =====
+  const hitTest = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
@@ -433,7 +344,6 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const offsetX = W / 2 + panRef.current.x;
     const offsetY = H / 2 - 50 + panRef.current.y;
 
-    // Wider hitbox for easier clicking (32px radius)
     const currentAgents = agentsRef.current;
     for (const agent of currentAgents) {
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
@@ -442,26 +352,107 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
         return;
       }
     }
-    if (onZoneClickRef.current) {
-      const curZone = selectedZoneRef.current;
+    const curZone = selectedZoneRef.current;
+    const zoneClick = onZoneClickRef.current;
+    if (zoneClick) {
       for (const zone of OFFICE_ZONES) {
         const cc = (zone.col1 + zone.col2) / 2, cr = (zone.row1 + zone.row2) / 2;
         const { x, y } = tileToScreen(cc, cr);
         const zw = (zone.col2 - zone.col1 + 1) * TILE_WIDTH / 2;
         const zh = (zone.row2 - zone.row1 + 1) * TILE_HEIGHT / 2;
         if (Math.abs(mx - (x + offsetX)) < zw && Math.abs(my - (y + offsetY)) < zh) {
-          onZoneClickRef.current(curZone === zone.id ? null : zone.id);
+          zoneClick(curZone === zone.id ? null : zone.id);
           return;
         }
       }
-      onZoneClickRef.current(null);
+      zoneClick(null);
     }
-  });
+  }, []);
+
+  // ===== Wheel zoom =====
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    zoomRef.current = Math.min(3, Math.max(0.3, zoomRef.current - e.deltaY * 0.001));
+  }, []);
+
+  // ===== Unified Pointer Events (mouse + touch) =====
+  const getPointerDist = () => {
+    const pts = Array.from(pointersRef.current.values());
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  };
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const canvas = e.currentTarget as HTMLElement;
+    canvas.setPointerCapture(e.pointerId);
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size === 1) {
+      // Single pointer → start pan
+      dragRef.current = {
+        active: true, didMove: false,
+        startX: e.clientX, startY: e.clientY,
+        panStartX: panRef.current.x, panStartY: panRef.current.y,
+      };
+      pinchRef.current.active = false;
+    } else if (pointersRef.current.size === 2) {
+      // Two pointers → start pinch
+      dragRef.current.active = false;
+      pinchRef.current = { active: true, startDist: getPointerDist(), startZoom: zoomRef.current };
+    }
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pinchRef.current.active && pointersRef.current.size === 2) {
+      const dist = getPointerDist();
+      if (pinchRef.current.startDist > 0) {
+        zoomRef.current = Math.min(3, Math.max(0.3, pinchRef.current.startZoom * (dist / pinchRef.current.startDist)));
+      }
+    } else if (dragRef.current.active && pointersRef.current.size === 1) {
+      const dx = e.clientX - dragRef.current.startX;
+      const dy = e.clientY - dragRef.current.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        dragRef.current.didMove = true;
+        panRef.current.x = dragRef.current.panStartX + dx / zoomRef.current;
+        panRef.current.y = dragRef.current.panStartY + dy / zoomRef.current;
+      }
+    }
+  }, []);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === "touch") return;
-    if (!dragRef.current.didMove) handleTapAtRef.current(e.clientX, e.clientY);
-    dragRef.current.active = false;
+    const wasSingleTap = pointersRef.current.size === 1 && dragRef.current.active && !dragRef.current.didMove && !pinchRef.current.active;
+
+    pointersRef.current.delete(e.pointerId);
+
+    if (wasSingleTap) {
+      // Click/tap — hit test
+      hitTest(e.clientX, e.clientY);
+    }
+
+    if (pointersRef.current.size === 0) {
+      dragRef.current.active = false;
+      pinchRef.current.active = false;
+    } else if (pointersRef.current.size === 1) {
+      // Went from 2→1: restart pan from remaining pointer
+      pinchRef.current.active = false;
+      const remaining = Array.from(pointersRef.current.values())[0];
+      dragRef.current = {
+        active: true, didMove: false,
+        startX: remaining.x, startY: remaining.y,
+        panStartX: panRef.current.x, panStartY: panRef.current.y,
+      };
+    }
+  }, [hitTest]);
+
+  const handlePointerCancel = useCallback((e: React.PointerEvent) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size === 0) {
+      dragRef.current.active = false;
+      pinchRef.current.active = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -470,19 +461,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const canvas = canvasRef.current;
     window.addEventListener("resize", resize);
     canvas?.addEventListener("wheel", handleWheel, { passive: false });
-    canvas?.addEventListener("touchstart", handleTouchStart, { passive: false });
-    canvas?.addEventListener("touchmove", handleTouchMove, { passive: false });
-    canvas?.addEventListener("touchend", handleTouchEnd, { passive: false });
     frameRef.current = requestAnimationFrame(render);
     return () => {
       window.removeEventListener("resize", resize);
       canvas?.removeEventListener("wheel", handleWheel);
-      canvas?.removeEventListener("touchstart", handleTouchStart);
-      canvas?.removeEventListener("touchmove", handleTouchMove);
-      canvas?.removeEventListener("touchend", handleTouchEnd);
       cancelAnimationFrame(frameRef.current);
     };
-  }, [resize, render, handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd]);
+  }, [resize, render, handleWheel]);
 
   return (
     <div ref={containerRef} style={{ position: "absolute", inset: 0, touchAction: "none", overflow: "hidden" }}>
@@ -491,7 +476,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         style={{ display: "block", width: "100%", height: "100%", cursor: "grab" }}
       />
     </div>
