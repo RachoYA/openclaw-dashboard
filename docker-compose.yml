@@ -1,0 +1,36 @@
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openclaw-dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-3100}:80"
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:18789}
+      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:18789}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+  # BFF service (Phase 2)
+  # bff:
+  #   build:
+  #     context: ./bff
+  #     dockerfile: Dockerfile
+  #   container_name: openclaw-dashboard-bff
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3101:3101"
+  #   environment:
+  #     OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-http://localhost:18789}
+  #     PORT: 3101
+  #   healthcheck:
+  #     test: ["CMD", "wget", "-qO-", "http://localhost:3101/health"]
+  #     interval: 30s
+  #     timeout: 3s
+  #     retries: 3
