@@ -17,20 +17,15 @@ services:
       start_period: 10s
       retries: 3
 
-  # BFF service (Phase 2)
-  # bff:
-  #   build:
-  #     context: ./bff
-  #     dockerfile: Dockerfile
-  #   container_name: openclaw-dashboard-bff
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3101:3101"
-  #   environment:
-  #     OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-http://localhost:18789}
-  #     PORT: 3101
-  #   healthcheck:
-  #     test: ["CMD", "wget", "-qO-", "http://localhost:3101/health"]
-  #     interval: 30s
-  #     timeout: 3s
-  #     retries: 3
+  # BFF service — polls OpenClaw, serves agent state via WebSocket
+  bff:
+    build:
+      context: ./bff
+    container_name: openclaw-dashboard-bff
+    restart: unless-stopped
+    ports:
+      - "${BFF_PORT:-3101}:3101"
+    environment:
+      PORT: 3101
+      POLL_INTERVAL: ${POLL_INTERVAL:-10000}
+      OPENCLAW_BIN: ${OPENCLAW_BIN:-openclaw}
