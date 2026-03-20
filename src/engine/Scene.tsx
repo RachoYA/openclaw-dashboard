@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from "react";
 import type { AgentState } from "@/data/types";
+import { type Theme, PALETTES } from "@/hooks/useTheme";
 import { tileToScreen, TILE_WIDTH, TILE_HEIGHT } from "./isometric";
 import { getSprite, SPRITE_SIZE } from "./SpriteGenerator";
 import { ANIMATIONS } from "./Animations";
@@ -20,9 +21,10 @@ interface SceneProps {
   onAgentClick: (id: string) => void;
   selectedZone?: string | null;
   onZoneClick?: (zoneId: string | null) => void;
+  theme?: Theme;
 }
 
-export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: SceneProps) {
+export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, theme = "light" }: SceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef(0);
@@ -46,6 +48,8 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
   onAgentClickRef.current = onAgentClick;
   const onZoneClickRef = useRef(onZoneClick);
   onZoneClickRef.current = onZoneClick;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
   const getDayPhase = () => {
     const h = new Date().getHours();
@@ -97,19 +101,33 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     ctx.scale(zoom, zoom);
     ctx.translate(-W / 2, -H / 2);
 
-    // --- Background ---
-    const gradColors: Record<string, [string, string]> = {
-      dawn: ["#1a0a2e", "#2d1545"], day: ["#0f0e17", "#1a1a2e"],
-      dusk: ["#1a1020", "#2d1a25"], night: ["#050510", "#0a0a18"],
-    };
-    const [g1, g2] = gradColors[phase] || gradColors.day;
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, g1); grad.addColorStop(1, g2);
-    ctx.fillStyle = grad;
+    // --- Background (theme-aware) ---
+    const pal = PALETTES[themeRef.current];
+    const isDark = themeRef.current === "dark";
+
+    if (isDark) {
+      const gradColors: Record<string, [string, string]> = {
+        dawn: ["#1a0a2e", "#2d1545"], day: [pal.bg1, pal.bg2],
+        dusk: ["#1a1020", "#2d1a25"], night: ["#050510", "#0a0a18"],
+      };
+      const [g1, g2] = gradColors[phase] || gradColors.day;
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, g1); grad.addColorStop(1, g2);
+      ctx.fillStyle = grad;
+    } else {
+      const gradColors: Record<string, [string, string]> = {
+        dawn: ["#fff5e6", "#ffecd2"], day: [pal.bg1, pal.bg2],
+        dusk: ["#f5e6f0", "#edd8e8"], night: ["#e8e8f0", "#dddde8"],
+      };
+      const [g1, g2] = gradColors[phase] || gradColors.day;
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, g1); grad.addColorStop(1, g2);
+      ctx.fillStyle = grad;
+    }
     ctx.fillRect(-W, -H, W * 3, H * 3);
 
-    if (phase === "night") {
-      ctx.fillStyle = "rgba(0,0,20,0.3)"; ctx.fillRect(-W, -H, W * 3, H * 3);
+    if (phase === "night" && isDark) {
+      ctx.fillStyle = pal.nightOverlay; ctx.fillRect(-W, -H, W * 3, H * 3);
       ctx.fillStyle = "#fff";
       for (let i = 0; i < 30; i++) {
         const sx = (Math.sin(i * 127.1) * 0.5 + 0.5) * W;
@@ -119,7 +137,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       }
       ctx.globalAlpha = 1;
     }
-    if (phase === "dawn" || phase === "dusk") {
+    if ((phase === "dawn" || phase === "dusk") && isDark) {
       ctx.fillStyle = phase === "dawn" ? "rgba(255,137,6,0.06)" : "rgba(229,49,112,0.06)";
       ctx.fillRect(-W, -H, W * 3, H * 3);
     }
@@ -135,15 +153,22 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
         ctx.lineTo(sx, sy + hh); ctx.lineTo(sx - hw, sy);
         ctx.closePath();
         const zone = getZoneAt(col, row);
-        const isLight = (col + row) % 2 === 0;
+        const isLt = (col + row) % 2 === 0;
         if (zone) {
-          ctx.fillStyle = isLight ? zone.floorColor : zone.floorColorAlt;
-          if (selZone === zone.id) ctx.fillStyle = isLight ? "#2a1f5a" : "#332466";
+          const zoneColors = pal.zones[zone.id as keyof typeof pal.zones];
+          if (zoneColors) {
+            ctx.fillStyle = isLt ? zoneColors.floor : zoneColors.alt;
+          } else {
+            ctx.fillStyle = isDark
+              ? (isLt ? zone.floorColor : zone.floorColorAlt)
+              : (isLt ? pal.floorLight : pal.floorDark);
+          }
+          if (selZone === zone.id) ctx.fillStyle = isLt ? pal.floorZoneHighlight1 : pal.floorZoneHighlight2;
         } else {
-          ctx.fillStyle = isLight ? "#1a1a2e" : "#16213e";
+          ctx.fillStyle = isLt ? pal.floorLight : pal.floorDark;
         }
         ctx.fill();
-        ctx.strokeStyle = selZone && zone?.id === selZone ? "#7f5af0" : "#2a2a4a";
+        ctx.strokeStyle = selZone && zone?.id === selZone ? pal.gridLineActive : pal.gridLine;
         ctx.lineWidth = selZone && zone?.id === selZone ? 1 : 0.5;
         ctx.stroke();
       }
@@ -167,13 +192,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
       const sx = x + offsetX, sy = y + offsetY;
       if (selZone && getZoneAt(agent.tileX, agent.tileY)?.id !== selZone) ctx.globalAlpha = 0.25;
-      ctx.fillStyle = "#3d2b1f";
+      ctx.fillStyle = isDark ? "#3d2b1f" : "#c4a882";
       ctx.beginPath();
       ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 16, sy + 4);
       ctx.lineTo(sx, sy + 12); ctx.lineTo(sx - 16, sy + 4);
       ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "#5c4033"; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = "#0f0e17"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
+      ctx.strokeStyle = isDark ? "#5c4033" : "#a08060"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = isDark ? "#0f0e17" : "#e8e8ed"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
       ctx.fillStyle = "#2cb67d"; ctx.fillRect(sx - 4, sy - 11, 8, 6);
       ctx.globalAlpha = 1;
     }
@@ -192,7 +217,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
 
       // Shadow
       ctx.beginPath(); ctx.ellipse(sx, sy + 2, 16, 6, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fill();
+      ctx.fillStyle = pal.shadow; ctx.fill();
 
       // Sprite
       const sprite = getSprite(agent.role);
@@ -204,7 +229,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
       const color = STATUS_COLORS[agent.status] || "#a7a9be";
       ctx.beginPath(); ctx.arc(sx + SPRITE_SIZE / 2 - 2, agentY + 4, 4, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = "#0f0e17"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.strokeStyle = isDark ? "#0f0e17" : "#ffffff"; ctx.lineWidth = 1.5; ctx.stroke();
       if (isActive) {
         ctx.beginPath(); ctx.arc(sx + SPRITE_SIZE / 2 - 2, agentY + 4, 7, 0, Math.PI * 2);
         ctx.strokeStyle = color; ctx.globalAlpha = Math.sin(t * 0.005) * 0.3 + 0.5;
@@ -218,9 +243,9 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
 
       // Name + role
       ctx.font = "bold 11px -apple-system, sans-serif";
-      ctx.textAlign = "center"; ctx.fillStyle = "#fffffe";
+      ctx.textAlign = "center"; ctx.fillStyle = pal.text;
       ctx.fillText(agent.name, sx, sy + 16);
-      ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
+      ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = pal.textMuted;
       ctx.fillText(agent.role, sx, sy + 27);
 
       // Task bubble
@@ -229,12 +254,12 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
         const text = agent.currentTask.length > 22 ? agent.currentTask.slice(0, 20) + "…" : agent.currentTask;
         const tw = ctx.measureText(text).width;
         const pad = 8;
-        ctx.fillStyle = "rgba(15,14,23,0.92)";
+        ctx.fillStyle = pal.surface;
         ctx.beginPath(); ctx.roundRect(sx - tw / 2 - pad, bubbleY - 9, tw + pad * 2, 18, 8); ctx.fill();
         ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
-        ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#fffffe";
+        ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = pal.text;
         ctx.fillText(text, sx, bubbleY);
-        ctx.fillStyle = "rgba(15,14,23,0.92)";
+        ctx.fillStyle = pal.surface;
         ctx.beginPath(); ctx.moveTo(sx - 4, bubbleY + 9);
         ctx.lineTo(sx + 4, bubbleY + 9); ctx.lineTo(sx, bubbleY + 14); ctx.closePath(); ctx.fill();
       }
@@ -274,16 +299,16 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick }: Scene
     // --- HUD (not zoomed) ---
     const phaseIcons: Record<string, string> = { dawn: "🌅", day: "☀️", dusk: "🌇", night: "🌙" };
     ctx.textAlign = "left";
-    ctx.font = "bold 18px -apple-system, sans-serif"; ctx.fillStyle = "#fffffe";
+    ctx.font = "bold 18px -apple-system, sans-serif"; ctx.fillStyle = pal.text;
     ctx.fillText("🐾 OpenClaw Office", 16, 28);
     const active = currentAgents.filter((a) => a.status !== "idle" && a.status !== "sleeping").length;
-    ctx.font = "12px -apple-system, sans-serif"; ctx.fillStyle = "#a7a9be";
+    ctx.font = "12px -apple-system, sans-serif"; ctx.fillStyle = pal.textSecondary;
     ctx.fillText(`${currentAgents.length} agents · ${active} active  ${phaseIcons[phase] || ""}`, 16, 46);
     ctx.textAlign = "right";
-    ctx.font = "11px -apple-system, monospace"; ctx.fillStyle = "#525272";
+    ctx.font = "11px -apple-system, monospace"; ctx.fillStyle = pal.textMuted;
     ctx.fillText(new Date().toLocaleTimeString("ru"), W - 16, 28);
     if (zoom !== 1) {
-      ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
+      ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = pal.textMuted;
       ctx.fillText(`${Math.round(zoom * 100)}%`, W - 16, 44);
     }
 
