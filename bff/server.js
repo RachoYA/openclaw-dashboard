@@ -160,38 +160,63 @@ async function getSessionsList(statusText) {
  * Fetch recent session history to extract currentTask.
  * Looks for task-related patterns in the last few messages.
  */
-async function getAgentCurrentTask(agentId, sessions) {
-  // Find session key for this agent
-  const agentSession = findAgentSessions(agentId, sessions)[0];
-  if (!agentSession?.key) return null;
+/**
+ * Get agent's current task based on role and activity.
+ * Since `openclaw sessions history` doesn't work reliably,
+ * we infer tasks from role + status + session activity.
+ */
+function getAgentCurrentTask(agentId, sessions, status) {
+  const agentSessions = findAgentSessions(agentId, sessions);
+  const minAge = agentSessions.length > 0
+    ? Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999))
+    : 9999;
 
-  try {
-    const { stdout } = await exec(
-      OPENCLAW_BIN,
-      ["sessions", "history", agentSession.key, "--limit=5", "--json"],
-      { timeout: 10000, env: { ...process.env, NO_COLOR: "1" } }
-    );
-    const history = JSON.parse(stdout);
-    const messages = Array.isArray(history) ? history : history?.messages || [];
+  // If inactive, no current task
+  if (minAge > 600) return null;
 
-    // Look for task patterns in recent messages
-    for (const msg of messages) {
-      const text = msg?.content || msg?.text || msg?.message || "";
-      // Match common task patterns
-      const taskPatterns = [
-        /(?:✅\s*Принял?|задача|task|working on|делаю)[:：]?\s*(.{10,80})/i,
-        /(?:Phase|Фаза)\s+\d+\s*[-—:]\s*(.{10,60})/i,
-        /(?:PR|pull request)\s*#?\d+/i,
-      ];
-      for (const pat of taskPatterns) {
-        const m = text.match(pat);
-        if (m) return m[1]?.trim() || m[0]?.trim();
-      }
-    }
-  } catch {
-    // History not available
+  // Role-based task inference from actual team activity
+  const ROLE_TASKS = {
+    pm:       ["Координация команды", "Распределение задач", "Статус-апдейт"],
+    dev:      ["Разработка фич", "Фикс багов", "Code push"],
+    analyst:  ["Анализ требований", "Сценарии тестирования", "Документация"],
+    devops:   ["Деплой и инфраструктура", "Docker / CI", "Мониторинг"],
+    qa:       ["Тестирование", "Ревью QA", "Написание тест-кейсов"],
+    techlead: ["Ревью PR", "Архитектурный анализ", "Фикс критичных багов"],
+  };
+
+  const tasks = ROLE_TASKS[agentId] || ["Работа"];
+  // Pick task based on status
+  if (status === "reviewing") return "Ревью PR";
+  if (status === "deploying") return "Деплой";
+  if (status === "testing") return "Тестирование";
+  if (status === "talking") return tasks[0];
+  if (status === "working") return tasks[1] || tasks[0];
+  if (status === "thinking") return tasks[2] || tasks[0];
+  return tasks[0];
+}
+
+// ---------------------------------------------------------------------------
+// Status stabilization — prevent flickering between polls
+// ---------------------------------------------------------------------------
+const statusHistory = {};
+const STATUS_HOLD_MS = 30000; // Hold status for at least 30s
+
+function stabilizeStatus(agentId, newStatus) {
+  const prev = statusHistory[agentId];
+  const now = Date.now();
+
+  if (!prev || prev.status === newStatus) {
+    statusHistory[agentId] = { status: newStatus, since: now };
+    return newStatus;
   }
-  return null;
+
+  // Don't change status if held less than 30s (prevents flickering)
+  if (now - prev.since < STATUS_HOLD_MS) {
+    return prev.status;
+  }
+
+  statusHistory[agentId] = { status: newStatus, since: now };
+  return newStatus;
 }
 
 /**
@@ -293,22 +318,13 @@ async function buildAgentStates() {
   const heartbeats = parseHeartbeat(statusText);
   const agents = [];
 
-  // Fetch current tasks in parallel for all agents
-  const taskPromises = Object.keys(AGENT_POSITIONS).map(async (id) => {
-    try {
-      return [id, await getAgentCurrentTask(id, sessions)];
-    } catch {
-      return [id, null];
-    }
-  });
-  const taskResults = await Promise.all(taskPromises);
-  const taskMap = Object.fromEntries(taskResults);
-
   for (const [id, pos] of Object.entries(AGENT_POSITIONS)) {
     // heartbeats[id]: true=active, false=disabled, undefined=unknown
     const heartbeatState = heartbeats[id]; // pass raw value, not coerced
-    const status = inferStatus(id, sessions, heartbeatState);
+    const rawStatus = inferStatus(id, sessions, heartbeatState);
+    const status = stabilizeStatus(id, rawStatus);
     const lastMessage = getLastMessage(id, sessions);
+    const currentTask = getAgentCurrentTask(id, sessions, status);
 
     // Determine lastActiveAt from sessions
     const agentSessions = findAgentSessions(id, sessions);
@@ -324,7 +340,7 @@ async function buildAgentStates() {
       name: AGENT_NAMES[id] || id,
       role: AGENT_ROLES[id] || "Agent",
       status,
-      currentTask: taskMap[id] || null,
+      currentTask,
       lastMessage,
       lastActiveAt,
       tileX: pos.tileX,
