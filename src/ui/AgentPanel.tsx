@@ -3,6 +3,7 @@
  * Replaces old Sidebar with modern, smooth design.
  */
 import { useActivityStore } from "@/data/ActivityStore";
+import { useMetricsStore } from "@/data/MetricsStore";
 import type { AgentState } from "@/data/types";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -32,12 +33,21 @@ export function AgentPanel({ agent, onClose, compact }: AgentPanelProps) {
   const agentEvents = allEvents.filter((e) => e.agentId === agent.id).slice(-5).reverse();
   const color = STATUS_COLORS[agent.status] || "#8e8ea0";
 
-  // Mock KPIs (will be real when BFF provides them)
+  // Real KPIs from BFF metrics
+  const metrics = useMetricsStore((s) => s.metrics);
+  const agentMsgCount = agentEvents.length;
+  const gh = metrics?.github;
+
+  // Calculate agent uptime from lastActiveAt
+  const uptimeStr = agent.lastActiveAt
+    ? `${Math.round((Date.now() - new Date(agent.lastActiveAt).getTime()) / 60000)}м`
+    : "—";
+
   const kpis = [
-    { label: "Задачи", value: Math.floor(Math.random() * 12 + 3), icon: "📋" },
-    { label: "Сообщения", value: Math.floor(Math.random() * 40 + 10), icon: "💬" },
-    { label: "PR", value: Math.floor(Math.random() * 6 + 1), icon: "🔀" },
-    { label: "Uptime", value: `${Math.floor(Math.random() * 8 + 2)}ч`, icon: "⏱️" },
+    { label: "События", value: agentMsgCount, icon: "💬" },
+    { label: "PRs", value: gh?.openPRs ?? "—", icon: "🔀" },
+    { label: "Bugs", value: gh?.openIssues ?? "—", icon: "🐛" },
+    { label: "Активен", value: uptimeStr, icon: "⏱️" },
   ];
 
   // Activity timeline (24h, 6 segments of 4h)

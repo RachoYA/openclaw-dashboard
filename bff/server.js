@@ -549,6 +549,19 @@ wss.on("connection", async (ws) => {
     ws.send(JSON.stringify({ type: "agents", data: latestState }));
   }
 
+  // Send recent events and metrics on connect
+  getRecentEvents(20).then((events) => {
+    if (events.length > 0 && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: "events", data: events }));
+    }
+  }).catch(() => {});
+
+  getMetrics().then((m) => {
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: "metrics", data: m }));
+    }
+  }).catch(() => {});
+
   ws.on("close", () => console.log("Client disconnected"));
 });
 
@@ -590,19 +603,28 @@ async function poll() {
       broadcastWs(payloadStr);
     }
 
-    // Detect status changes and log events
+    // Detect status changes → log + broadcast events
+    const newEvents = [];
     for (const agent of latestState) {
       const prev = previousStatuses[agent.id];
       if (prev && prev !== agent.status) {
-        await logEvent({
+        const event = {
           type: "status_change",
           agentId: agent.id,
           agentName: agent.name,
           from: prev,
           to: agent.status,
-        });
+          timestamp: new Date().toISOString(),
+        };
+        await logEvent(event);
+        newEvents.push(event);
       }
       previousStatuses[agent.id] = agent.status;
+    }
+
+    // Broadcast events to all WS clients
+    if (newEvents.length > 0) {
+      broadcastWs(JSON.stringify({ type: "events", data: newEvents }));
     }
   } catch (err) {
     console.error("Poll error:", err.message);

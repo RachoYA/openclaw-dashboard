@@ -4,7 +4,7 @@
  */
 import { useAgentStore } from "./AgentStore";
 import { useActivityStore } from "./ActivityStore";
-import type { AgentState } from "./types";
+import { useMetricsStore } from "./MetricsStore";
 
 /** Track previous statuses to detect changes → generate activity events */
 const prevStatuses = new Map<string, string>();
@@ -51,8 +51,8 @@ function setStatus(s: WSStatus) {
 }
 
 interface BFFMessage {
-  type: "agents";
-  data: AgentState[];
+  type: "agents" | "metrics" | "events";
+  data: any;
 }
 
 function scheduleReconnect() {
@@ -118,6 +118,18 @@ function connect() {
             if (ev) actStore.addEvent(agent.id, ev.type as any, ev.text);
           }
           prevStatuses.set(agent.id, agent.status);
+        }
+      } else if (msg.type === "metrics" && msg.data) {
+        // Real metrics from BFF (GitHub + OpenClaw)
+        useMetricsStore.getState().setMetrics(msg.data);
+      } else if (msg.type === "events" && Array.isArray(msg.data)) {
+        // Real events from BFF (status changes)
+        const actStore = useActivityStore.getState();
+        for (const ev of msg.data) {
+          if (ev.agentId && ev.to) {
+            const mapped = STATUS_EVENT_MAP[ev.to];
+            if (mapped) actStore.addEvent(ev.agentId, mapped.type as any, `${ev.agentName}: ${mapped.text}`);
+          }
         }
       }
     } catch (err) {

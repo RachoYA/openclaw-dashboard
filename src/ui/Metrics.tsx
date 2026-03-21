@@ -1,26 +1,21 @@
 import { useAgentStore } from "@/data/AgentStore";
-import { useActivityStore } from "@/data/ActivityStore";
+import { useMetricsStore } from "@/data/MetricsStore";
 
 export function Metrics() {
   const agents = useAgentStore((s) => s.agents);
-  const events = useActivityStore((s) => s.events);
+  const metrics = useMetricsStore((s) => s.metrics);
 
   const active = agents.filter((a) => a.status !== "idle" && a.status !== "sleeping").length;
-  const sleeping = agents.filter((a) => a.status === "sleeping").length;
-  const tasksCompleted = events.filter((e) => e.type === "task_completed").length;
-  const prsCreated = events.filter((e) => e.type === "pr_created").length;
-  const prsMerged = events.filter((e) => e.type === "pr_merged").length;
-  const errors = events.filter((e) => e.type === "error").length;
-  const deploys = events.filter((e) => e.type === "deploy").length;
+  const gh = metrics?.github;
 
   return (
     <div style={containerStyle}>
-      <MetricCard emoji="👥" label="Active" value={active} total={agents.length} color="#2cb67d" />
-      <MetricCard emoji="💤" label="Sleeping" value={sleeping} color="#525272" />
-      <MetricCard emoji="✅" label="Tasks" value={tasksCompleted} color="#2cb67d" />
-      <MetricCard emoji="🔀" label="PRs" value={`${prsMerged}/${prsCreated}`} color="#7f5af0" />
-      <MetricCard emoji="🚀" label="Deploys" value={deploys} color="#ff8906" />
-      <MetricCard emoji="🐛" label="Bugs" value={errors} color="#e53170" />
+      <MetricCard emoji="👥" label="Active" value={active} total={agents.length} color="#34c759" />
+      <MetricCard emoji="🔀" label="PRs" value={gh ? gh.openPRs : "—"} color="#af52de" />
+      <MetricCard emoji="🐛" label="Bugs" value={gh ? gh.openIssues : "—"} color="#ff3b30" />
+      <MetricCard emoji="✅" label="Closed" value={gh ? gh.closedIssues24h : "—"} color="#34c759" />
+      <MetricCard emoji="📝" label="Commits" value={gh ? gh.commits24h : "—"} color="#007aff" />
+      <MetricCard emoji="🔀" label="Merged" value={gh ? gh.mergedPRs24h : "—"} color="#5856d6" />
     </div>
   );
 }
@@ -34,10 +29,10 @@ function MetricCard({ emoji, label, value, total, color }: {
 }) {
   return (
     <div style={cardStyle}>
-      <span style={{ fontSize: "16px" }}>{emoji}</span>
-      <span style={{ fontSize: "18px", fontWeight: 700, color }}>{value}</span>
-      {total !== undefined && <span style={{ fontSize: "10px", color: "#525272" }}>/{total}</span>}
-      <span style={{ fontSize: "9px", color: "#a7a9be" }}>{label}</span>
+      <span style={{ fontSize: "14px" }}>{emoji}</span>
+      <span style={{ fontSize: "16px", fontWeight: 700, color }}>{value}</span>
+      {total !== undefined && <span style={{ fontSize: "9px", color: "#8e8ea0" }}>/{total}</span>}
+      <span style={{ fontSize: "9px", color: "#8e8ea0" }}>{label}</span>
     </div>
   );
 }
@@ -51,6 +46,7 @@ const containerStyle: React.CSSProperties = {
   flexWrap: "wrap",
   gap: "4px",
   maxWidth: "calc(100vw - 24px)",
+  zIndex: 10,
 };
 
 const cardStyle: React.CSSProperties = {
@@ -58,11 +54,11 @@ const cardStyle: React.CSSProperties = {
   flexDirection: "column",
   alignItems: "center",
   gap: "1px",
-  background: "rgba(255, 255, 255, 0.85)",
+  background: "rgba(255, 255, 255, 0.9)",
   border: "1px solid #e5e5ea",
-  borderRadius: "8px",
-  padding: "4px 8px",
-  minWidth: "44px",
+  borderRadius: "10px",
+  padding: "5px 10px",
+  minWidth: "48px",
   backdropFilter: "blur(10px)",
-  fontSize: "10px",
+  boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
 };
