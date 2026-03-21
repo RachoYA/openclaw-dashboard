@@ -109,11 +109,13 @@ function connect() {
           }
         }
 
-        // Generate activity events from status changes
+        // Generate activity events from status changes (including initial connect)
         const actStore = useActivityStore.getState();
         for (const agent of msg.data) {
           const prev = prevStatuses.get(agent.id);
-          if (prev && prev !== agent.status && agent.status !== "idle") {
+          const isNew = prev === undefined; // first time seeing this agent
+          const changed = prev !== undefined && prev !== agent.status;
+          if ((isNew || changed) && agent.status !== "idle") {
             const ev = STATUS_EVENT_MAP[agent.status];
             if (ev) actStore.addEvent(agent.id, ev.type as any, ev.text);
           }

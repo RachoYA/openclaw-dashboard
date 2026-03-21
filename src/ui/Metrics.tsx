@@ -8,14 +8,17 @@ export function Metrics() {
   const active = agents.filter((a) => a.status !== "idle" && a.status !== "sleeping").length;
   const gh = metrics?.github;
 
+  const sleeping = agents.filter((a) => a.status === "sleeping").length;
+
   return (
     <div style={containerStyle}>
       <MetricCard emoji="👥" label="Active" value={active} total={agents.length} color="#34c759" />
-      <MetricCard emoji="🔀" label="PRs" value={gh ? gh.openPRs : "—"} color="#af52de" />
-      <MetricCard emoji="🐛" label="Bugs" value={gh ? gh.openIssues : "—"} color="#ff3b30" />
-      <MetricCard emoji="✅" label="Closed" value={gh ? gh.closedIssues24h : "—"} color="#34c759" />
-      <MetricCard emoji="📝" label="Commits" value={gh ? gh.commits24h : "—"} color="#007aff" />
-      <MetricCard emoji="🔀" label="Merged" value={gh ? gh.mergedPRs24h : "—"} color="#5856d6" />
+      {sleeping > 0 && <MetricCard emoji="💤" label="Sleeping" value={sleeping} color="#636366" />}
+      <MetricCard emoji="🔀" label="PRs" value={gh?.openPRs ?? 0} color="#af52de" />
+      <MetricCard emoji="🐛" label="Bugs" value={gh?.openIssues ?? 0} color="#ff3b30" />
+      <MetricCard emoji="✅" label="Closed" value={gh?.closedIssues24h ?? 0} color="#34c759" />
+      <MetricCard emoji="📝" label="Commits" value={gh?.commits24h ?? 0} color="#007aff" />
+      <MetricCard emoji="🔀" label="Merged" value={gh?.mergedPRs24h ?? 0} color="#5856d6" />
     </div>
   );
 }
