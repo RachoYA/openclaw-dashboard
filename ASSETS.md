@@ -1,8 +1,17 @@
 # Assets & Credits
 
-## Current: Procedural Pixel Art
-Sprites are generated programmatically via Canvas2D (`src/engine/SpriteGenerator.ts`).
-No external asset files required.
+## Current: Hybrid (Procedural + PNG Sprites)
+
+**Procedural:** Canvas2D генерация в `src/engine/SpriteGenerator.ts` — fallback если PNG не загрузились.
+
+**PNG Sprites:** 37 файлов в `public/assets/sprites/`:
+- 6 персонажей (спрайтшиты × 6 поз) — `characters/`
+- 12 предметов мебели — `furniture/`
+- 10 иконок статусов/действий — `icons/`
+- 7 UI элементов — `ui/`
+- `atlas.json` + `characters/metadata.json`
+
+**Загрузчик:** `src/engine/SpriteLoader.ts` — загружает PNG, fallback на процедурную генерацию.
 
 ## Recommended Free Assets for Future Phases
 
