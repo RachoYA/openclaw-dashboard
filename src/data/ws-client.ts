@@ -1,17 +1,12 @@
 /**
  * WebSocket client — connects to BFF and updates AgentStore in real time.
+ * Includes exponential backoff reconnect to prevent OOM from rapid retries.
  */
 import { useAgentStore } from "./AgentStore";
 import type { AgentState } from "./types";
 
-/**
- * Determine WebSocket URL:
- * 1. Explicit VITE_BFF_WS_URL env var
- * 2. Relative to current host: wss://host/db/ws (or ws:// for localhost)
- */
 function getWsUrl(): string {
   if (import.meta.env.VITE_BFF_WS_URL) return import.meta.env.VITE_BFF_WS_URL;
-
   const loc = window.location;
   const proto = loc.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${loc.host}/db/ws`;
@@ -21,6 +16,8 @@ const BFF_URL = getWsUrl();
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY = 30000; // 30s max
 
 /** Connection state — exposed for UI indicators */
 export type WSStatus = "disconnected" | "connecting" | "connected" | "demo";
@@ -33,6 +30,7 @@ export function onWSStatusChange(cb: (s: WSStatus) => void) {
   return () => statusListeners.delete(cb);
 }
 function setStatus(s: WSStatus) {
+  if (currentStatus === s) return; // skip duplicate
   currentStatus = s;
   statusListeners.forEach((cb) => cb(s));
 }
@@ -42,46 +40,75 @@ interface BFFMessage {
   data: AgentState[];
 }
 
+function scheduleReconnect() {
+  if (reconnectTimer) return; // already scheduled
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+  reconnectAttempts++;
+  console.log(`[WS] Reconnecting in ${delay / 1000}s (attempt ${reconnectAttempts})`);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, delay);
+}
+
 function connect() {
-  if (ws?.readyState === WebSocket.OPEN) return;
+  if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
 
   setStatus("connecting");
   console.log(`[WS] Connecting to ${BFF_URL}...`);
-  ws = new WebSocket(BFF_URL);
+
+  try {
+    ws = new WebSocket(BFF_URL);
+  } catch (err) {
+    console.warn("[WS] Failed to create WebSocket:", err);
+    setStatus("demo");
+    scheduleReconnect();
+    return;
+  }
 
   ws.onopen = () => {
     console.log("[WS] Connected to BFF");
     setStatus("connected");
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
+    reconnectAttempts = 0; // reset backoff on success
   };
 
   ws.onmessage = (event) => {
     try {
       const msg: BFFMessage = JSON.parse(event.data as string);
       if (msg.type === "agents" && Array.isArray(msg.data)) {
-        // Full replace — BFF is the single source of truth
-        useAgentStore.getState().setAgents(msg.data);
-        console.log(`[WS] Synced ${msg.data.length} agents (real OpenClaw data)`);
+        const store = useAgentStore.getState();
+        if (store.setAgents) {
+          store.setAgents(msg.data);
+        } else {
+          // Fallback: update individually
+          for (const agent of msg.data) {
+            store.updateAgent(agent.id, {
+              status: agent.status,
+              currentTask: agent.currentTask,
+              lastMessage: agent.lastMessage,
+              lastActiveAt: agent.lastActiveAt,
+              tileX: agent.tileX,
+              tileY: agent.tileY,
+              direction: agent.direction,
+            });
+          }
+        }
       }
     } catch (err) {
-      console.warn("[WS] Failed to parse message:", err);
+      console.warn("[WS] Parse error:", err);
     }
   };
 
   ws.onclose = () => {
-    console.log("[WS] Disconnected. Reconnecting in 5s...");
+    console.log("[WS] Disconnected");
     ws = null;
     setStatus("demo");
-    reconnectTimer = setTimeout(connect, 5000);
+    scheduleReconnect();
   };
 
-  ws.onerror = (err) => {
-    console.warn("[WS] Error:", err);
-    setStatus("demo");
-    ws?.close();
+  ws.onerror = () => {
+    // onerror always fires before onclose — just log, don't reconnect here
+    console.warn("[WS] Connection error");
   };
 }
 
@@ -90,7 +117,8 @@ export function startWSClient() {
 }
 
 export function stopWSClient() {
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  ws?.close();
-  ws = null;
+  reconnectAttempts = 0;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); ws = null; }
+  setStatus("disconnected");
 }
