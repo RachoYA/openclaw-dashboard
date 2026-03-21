@@ -1,6 +1,6 @@
 /**
  * WebSocket client — connects to BFF and updates AgentStore in real time.
- * OOM-safe: exponential backoff, dedup, CONNECTING guard.
+ * Includes exponential backoff reconnect to prevent OOM from rapid retries.
  */
 import { useAgentStore } from "./AgentStore";
 import type { AgentState } from "./types";
@@ -17,8 +17,9 @@ const BFF_URL = getWsUrl();
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_DELAY = 30000;
+const MAX_RECONNECT_DELAY = 30000; // 30s max
 
+/** Connection state — exposed for UI indicators */
 export type WSStatus = "disconnected" | "connecting" | "connected" | "demo";
 let currentStatus: WSStatus = "disconnected";
 const statusListeners = new Set<(s: WSStatus) => void>();
@@ -29,26 +30,28 @@ export function onWSStatusChange(cb: (s: WSStatus) => void) {
   return () => statusListeners.delete(cb);
 }
 function setStatus(s: WSStatus) {
-  if (currentStatus === s) return;
+  if (currentStatus === s) return; // skip duplicate
   currentStatus = s;
   statusListeners.forEach((cb) => cb(s));
 }
 
-interface BFFMessage { type: "agents"; data: AgentState[] }
+interface BFFMessage {
+  type: "agents";
+  data: AgentState[];
+}
 
 function scheduleReconnect() {
-  if (reconnectTimer) return;
+  if (reconnectTimer) return; // already scheduled
   const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
   reconnectAttempts++;
   console.log(`[WS] Reconnecting in ${delay / 1000}s (attempt ${reconnectAttempts})`);
-  reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, delay);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, delay);
 }
 
-let lastUpdateTime = 0;
-let lastPayloadHash = "";
-
 function connect() {
-  // Guard: don't create new WS if one is already open or connecting
   if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
 
   setStatus("connecting");
@@ -56,45 +59,62 @@ function connect() {
 
   try {
     ws = new WebSocket(BFF_URL);
-  } catch {
+  } catch (err) {
+    console.warn("[WS] Failed to create WebSocket:", err);
     setStatus("demo");
     scheduleReconnect();
     return;
   }
 
   ws.onopen = () => {
-    console.log("[WS] Connected");
+    console.log("[WS] Connected to BFF");
     setStatus("connected");
-    reconnectAttempts = 0;
+    reconnectAttempts = 0; // reset backoff on success
   };
 
   ws.onmessage = (event) => {
     try {
       const msg: BFFMessage = JSON.parse(event.data as string);
       if (msg.type === "agents" && Array.isArray(msg.data)) {
-        const now = Date.now();
-        const hash = msg.data.map((a) => `${a.id}:${a.status}`).join(",");
-        if (hash === lastPayloadHash && now - lastUpdateTime < 5000) return;
-        if (now - lastUpdateTime < 2000) return;
-        lastUpdateTime = now;
-        lastPayloadHash = hash;
         const store = useAgentStore.getState();
-        if (store.setAgents) store.setAgents(msg.data);
+        if (store.setAgents) {
+          store.setAgents(msg.data);
+        } else {
+          // Fallback: update individually
+          for (const agent of msg.data) {
+            store.updateAgent(agent.id, {
+              status: agent.status,
+              currentTask: agent.currentTask,
+              lastMessage: agent.lastMessage,
+              lastActiveAt: agent.lastActiveAt,
+              tileX: agent.tileX,
+              tileY: agent.tileY,
+              direction: agent.direction,
+            });
+          }
+        }
       }
-    } catch { /* silent */ }
+    } catch (err) {
+      console.warn("[WS] Parse error:", err);
+    }
   };
 
   ws.onclose = () => {
+    console.log("[WS] Disconnected");
     ws = null;
     setStatus("demo");
     scheduleReconnect();
   };
 
-  // onerror: do NOT call ws.close() — onclose will fire automatically
-  ws.onerror = () => {};
+  ws.onerror = () => {
+    // onerror always fires before onclose — just log, don't reconnect here
+    console.warn("[WS] Connection error");
+  };
 }
 
-export function startWSClient() { connect(); }
+export function startWSClient() {
+  connect();
+}
 
 export function stopWSClient() {
   reconnectAttempts = 0;
