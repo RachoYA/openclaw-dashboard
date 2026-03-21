@@ -39,6 +39,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
   const frameRef = useRef(0);
   const particlesRef = useRef<MessageParticle[]>([]);
   const lastParticleTime = useRef(0);
+  const cancelledRef = useRef(false);
 
   // All mutable state in refs
   const zoomRef = useRef(1);
@@ -291,8 +292,8 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       }
     }
 
-    // --- Particles ---
-    if (t - lastParticleTime.current > 3000 + Math.random() * 4000 && currentAgents.length >= 2) {
+    // --- Particles (capped at 10) ---
+    if (t - lastParticleTime.current > 3000 + Math.random() * 4000 && currentAgents.length >= 2 && particlesRef.current.length < 10) {
       lastParticleTime.current = t;
       const fi = Math.floor(Math.random() * currentAgents.length);
       let ti = Math.floor(Math.random() * currentAgents.length);
@@ -328,7 +329,9 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     }
 
     ctx.restore();
-    frameRef.current = requestAnimationFrame(render);
+    if (!cancelledRef.current) {
+      frameRef.current = requestAnimationFrame(render);
+    }
   }, []);
 
   // ===== Hit test (called on tap/click) =====
@@ -456,6 +459,7 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
   }, []);
 
   useEffect(() => {
+    cancelledRef.current = false;
     preloadSprites();
     resize();
     const canvas = canvasRef.current;
@@ -463,9 +467,11 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     canvas?.addEventListener("wheel", handleWheel, { passive: false });
     frameRef.current = requestAnimationFrame(render);
     return () => {
+      cancelledRef.current = true;
       window.removeEventListener("resize", resize);
       canvas?.removeEventListener("wheel", handleWheel);
       cancelAnimationFrame(frameRef.current);
+      particlesRef.current = [];
     };
   }, [resize, render, handleWheel]);
 
