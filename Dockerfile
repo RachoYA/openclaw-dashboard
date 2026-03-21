@@ -20,7 +20,7 @@ RUN if [ -f pnpm-lock.yaml ]; then \
     elif [ -f yarn.lock ]; then \
       yarn build; \
     else \
-      npm run build; \
+      npx vite build; \
     fi
 
 # Stage 2: Production

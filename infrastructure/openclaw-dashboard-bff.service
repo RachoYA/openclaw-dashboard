@@ -1,0 +1,25 @@
+[Unit]
+Description=OpenClaw Dashboard BFF
+After=network.target redis-server.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=racho
+WorkingDirectory=/home/racho/.openclaw/workspace-devops/openclaw-dashboard/bff
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+Environment=PORT=3101
+Environment=POLL_INTERVAL=10000
+Environment=OPENCLAW_BIN=openclaw
+Environment=REDIS_URL=redis://localhost:6390
+Environment=NODE_ENV=production
+
+# Security
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/racho/.openclaw
+
+[Install]
+WantedBy=multi-user.target

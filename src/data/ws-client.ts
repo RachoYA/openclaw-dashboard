@@ -25,9 +25,9 @@ let currentStatus: WSStatus = "disconnected";
 const statusListeners = new Set<(s: WSStatus) => void>();
 
 export function getWSStatus(): WSStatus { return currentStatus; }
-export function onWSStatusChange(cb: (s: WSStatus) => void) {
+export function onWSStatusChange(cb: (s: WSStatus) => void): () => void {
   statusListeners.add(cb);
-  return () => statusListeners.delete(cb);
+  return () => { statusListeners.delete(cb); };
 }
 function setStatus(s: WSStatus) {
   if (currentStatus === s) return; // skip duplicate
