@@ -58,16 +58,30 @@ function connect() {
     }
   };
 
+  // Throttle: skip updates if last update was <2s ago (prevents OOM from rapid re-renders)
+  let lastUpdateTime = 0;
+  let lastPayloadHash = "";
+
   ws.onmessage = (event) => {
     try {
-      const msg: BFFMessage = JSON.parse(event.data as string);
+      const raw = event.data as string;
+      const msg: BFFMessage = JSON.parse(raw);
       if (msg.type === "agents" && Array.isArray(msg.data)) {
-        // Full replace — BFF is the single source of truth
+        const now = Date.now();
+
+        // Skip if same data (dedup by simple hash)
+        const hash = msg.data.map((a) => `${a.id}:${a.status}`).join(",");
+        if (hash === lastPayloadHash && now - lastUpdateTime < 5000) return;
+
+        // Throttle: min 2s between updates
+        if (now - lastUpdateTime < 2000) return;
+
+        lastUpdateTime = now;
+        lastPayloadHash = hash;
         useAgentStore.getState().setAgents(msg.data);
-        console.log(`[WS] Synced ${msg.data.length} agents (real OpenClaw data)`);
       }
-    } catch (err) {
-      console.warn("[WS] Failed to parse message:", err);
+    } catch {
+      // Silently ignore parse errors — no console.log to avoid memory pressure
     }
   };
 
