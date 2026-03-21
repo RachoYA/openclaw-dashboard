@@ -84,16 +84,19 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const container = containerRef.current;
     if (!canvas || !container) return;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = container.clientWidth * dpr;
-    canvas.height = container.clientHeight * dpr;
-    canvas.style.width = container.clientWidth + "px";
-    canvas.style.height = container.clientHeight + "px";
+    const w = container.clientWidth || 1;
+    const h = container.clientHeight || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
     const ctx = canvas.getContext("2d");
     if (ctx) ctx.scale(dpr, dpr);
   }, []);
 
   // ===== Render loop =====
   const render = useCallback(() => {
+    if (cancelledRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -102,7 +105,15 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.width / dpr;
     const H = canvas.height / dpr;
+
+    // Skip if canvas has no dimensions (prevents crash)
+    if (W <= 0 || H <= 0) {
+      frameRef.current = requestAnimationFrame(render);
+      return;
+    }
+
     const t = performance.now();
+    try { // protect against canvas crashes
     const phase = getDayPhase();
     const zoom = zoomRef.current;
     const currentAgents = agentsRef.current;
@@ -224,7 +235,9 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       if (!drewPng) {
         const sprite = getSprite(agent.role);
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(sprite, sx - SPRITE_SIZE / 2, agentY, SPRITE_SIZE, SPRITE_SIZE);
+        if (sprite.width > 0 && sprite.height > 0) {
+          ctx.drawImage(sprite, sx - SPRITE_SIZE / 2, agentY, SPRITE_SIZE, SPRITE_SIZE);
+        }
         ctx.imageSmoothingEnabled = true;
       }
 
@@ -329,6 +342,10 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     }
 
     ctx.restore();
+    } catch (err) {
+      console.error("[Scene] Render error:", err);
+    }
+
     if (!cancelledRef.current) {
       frameRef.current = requestAnimationFrame(render);
     }
