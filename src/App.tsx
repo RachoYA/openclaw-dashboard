@@ -50,7 +50,7 @@ export function App() {
 
       {/* Overlay UI */}
       <ConnectionBadge />
-      {!isMobile && <Metrics />}
+      <Metrics />
       {!isMobile && <Timeline />}
       {!isMobile && <Heatmap />}
       <TaskButton />

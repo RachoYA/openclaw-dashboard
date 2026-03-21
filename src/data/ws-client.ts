@@ -3,7 +3,22 @@
  * Includes exponential backoff reconnect to prevent OOM from rapid retries.
  */
 import { useAgentStore } from "./AgentStore";
+import { useActivityStore } from "./ActivityStore";
 import type { AgentState } from "./types";
+
+/** Track previous statuses to detect changes → generate activity events */
+const prevStatuses = new Map<string, string>();
+
+const STATUS_EVENT_MAP: Record<string, { type: "message" | "task_started" | "task_completed" | "deploy" | "review"; text: string }> = {
+  working: { type: "task_started", text: "начал работу" },
+  talking: { type: "message", text: "общается" },
+  thinking: { type: "message", text: "думает над задачей" },
+  deploying: { type: "deploy", text: "деплоит" },
+  reviewing: { type: "review", text: "ревьюит код" },
+  testing: { type: "task_started", text: "тестирует" },
+  sleeping: { type: "message", text: "ушёл спать" },
+  celebrating: { type: "task_completed", text: "празднует завершение" },
+};
 
 function getWsUrl(): string {
   if (import.meta.env.VITE_BFF_WS_URL) return import.meta.env.VITE_BFF_WS_URL;
@@ -92,6 +107,17 @@ function connect() {
               direction: agent.direction,
             });
           }
+        }
+
+        // Generate activity events from status changes
+        const actStore = useActivityStore.getState();
+        for (const agent of msg.data) {
+          const prev = prevStatuses.get(agent.id);
+          if (prev && prev !== agent.status && agent.status !== "idle") {
+            const ev = STATUS_EVENT_MAP[agent.status];
+            if (ev) actStore.addEvent(agent.id, ev.type as any, ev.text);
+          }
+          prevStatuses.set(agent.id, agent.status);
         }
       }
     } catch (err) {

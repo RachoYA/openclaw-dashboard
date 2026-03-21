@@ -44,22 +44,25 @@ function MetricCard({ emoji, label, value, total, color }: {
 
 const containerStyle: React.CSSProperties = {
   position: "absolute",
-  top: 70,
-  left: 20,
+  top: 60,
+  left: 12,
   display: "flex",
-  flexDirection: "column",
-  gap: "6px",
+  flexDirection: "row",
+  flexWrap: "wrap",
+  gap: "4px",
+  maxWidth: "calc(100vw - 24px)",
 };
 
 const cardStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
-  gap: "2px",
-  background: "rgba(15, 14, 23, 0.85)",
-  border: "1px solid #2a2a4a",
-  borderRadius: "10px",
-  padding: "8px 12px",
-  minWidth: "60px",
+  gap: "1px",
+  background: "rgba(255, 255, 255, 0.85)",
+  border: "1px solid #e5e5ea",
+  borderRadius: "8px",
+  padding: "4px 8px",
+  minWidth: "44px",
   backdropFilter: "blur(10px)",
+  fontSize: "10px",
 };
