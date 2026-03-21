@@ -5,7 +5,6 @@
 import { useAgentStore } from "./AgentStore";
 import { useActivityStore } from "./ActivityStore";
 import { useMetricsStore } from "./MetricsStore";
-import type { AgentState } from "./types";
 
 /** Track previous statuses to detect changes → generate activity events */
 const prevStatuses = new Map<string, string>();
