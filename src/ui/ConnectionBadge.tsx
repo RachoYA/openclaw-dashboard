@@ -20,8 +20,8 @@ export function ConnectionBadge() {
   return (
     <div style={{
       position: "absolute",
-      top: 56,
-      left: 12,
+      top: 32,
+      left: 200,
       display: "flex",
       alignItems: "center",
       gap: "6px",
