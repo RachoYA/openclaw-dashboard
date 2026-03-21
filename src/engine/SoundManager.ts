@@ -87,8 +87,13 @@ export function isMuted(): boolean {
   return muted;
 }
 
-// Wrap all sound functions to respect mute
-const origFns = { soundNotification, soundTaskComplete, soundError, soundClick, soundDeploy, soundSelect };
-for (const [name, fn] of Object.entries(origFns)) {
-  (exports as Record<string, unknown>)[name] = () => { if (!muted) fn(); };
-}
+// Sound functions already respect mute via isMuted() check
+// Export wrapped versions that check mute state
+export const sounds = {
+  notification: () => { if (!muted) soundNotification(); },
+  taskComplete: () => { if (!muted) soundTaskComplete(); },
+  error: () => { if (!muted) soundError(); },
+  click: () => { if (!muted) soundClick(); },
+  deploy: () => { if (!muted) soundDeploy(); },
+  select: () => { if (!muted) soundSelect(); },
+};

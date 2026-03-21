@@ -156,7 +156,6 @@ async function getSessionsList(statusText) {
 
 // parseSessionsText removed — now using parseSessionsFromStatus which parses
 // the `openclaw status` output directly (more reliable, shows ALL agents).
-}
 
 /**
  * Fetch recent session history to extract currentTask.
@@ -513,6 +512,12 @@ const httpServer = createServer((req, res) => {
       res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Origin": "*" });
       res.end(JSON.stringify(metrics));
     });
+    return;
+  }
+
+  if (req.url === "/" || req.url === "/ws" || req.url === "/db/ws") {
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({ status: "ok", hint: "Connect via WebSocket for live data" }));
     return;
   }
 

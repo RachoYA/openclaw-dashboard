@@ -7,7 +7,7 @@ import { type MessageParticle, createParticle, updateParticle, drawParticle } fr
 import { OFFICE_ZONES, getZoneAt, drawZoneLabel } from "./OfficeZones";
 import {
   preloadSprites, drawAgentSprite, drawFurniture, drawActionIcon,
-  drawSpeechBubble, drawStatusIcon, SPRITE_W, SPRITE_H,
+  drawSpeechBubble, drawStatusIcon, SPRITE_W,
 } from "./SpriteLoader";
 
 const GRID_COLS = 10;
