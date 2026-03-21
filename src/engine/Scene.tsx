@@ -347,10 +347,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const offsetX = W / 2 + panRef.current.x;
     const offsetY = H / 2 - 50 + panRef.current.y;
 
+    // Hit test agents — match render position (sprite drawn at sy - SPRITE_SIZE - 4)
     const currentAgents = agentsRef.current;
     for (const agent of currentAgents) {
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
-      if (Math.abs(mx - (x + offsetX)) < 32 && Math.abs(my - (y + offsetY - SPRITE_SIZE / 2)) < 36) {
+      const agentCenterX = x + offsetX;
+      const agentCenterY = y + offsetY - SPRITE_SIZE / 2 - 4; // match render offset
+      if (Math.abs(mx - agentCenterX) < 36 && Math.abs(my - agentCenterY) < 40) {
         onAgentClickRef.current(agent.id);
         return;
       }
