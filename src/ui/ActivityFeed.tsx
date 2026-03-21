@@ -38,7 +38,6 @@ export function ActivityFeed({ compact }: { compact?: boolean }) {
 
 function FeedItem({ event }: { event: ActivityEvent }) {
   const icon = EVENT_ICONS[event.type] || "•";
-  const time = new Date(event.timestamp).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
   const age = Math.round((Date.now() - new Date(event.timestamp).getTime()) / 1000);
   const ageStr = age < 60 ? `${age}с` : age < 3600 ? `${Math.floor(age / 60)}м` : `${Math.floor(age / 3600)}ч`;
 
