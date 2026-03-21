@@ -164,7 +164,6 @@ export function AgentPanel({ agent, onClose, compact }: AgentPanelProps) {
           <p style={{ fontSize: "12px", color: "#aeaeb2" }}>Нет недавних действий</p>
         )}
         {agentEvents.map((ev) => {
-          const time = new Date(ev.timestamp).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
           const age = Math.round((Date.now() - new Date(ev.timestamp).getTime()) / 1000);
           const ageStr = age < 60 ? `${age}с` : age < 3600 ? `${Math.floor(age / 60)}м` : `${Math.floor(age / 3600)}ч`;
           return (

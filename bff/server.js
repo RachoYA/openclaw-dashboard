@@ -156,7 +156,6 @@ async function getSessionsList(statusText) {
 
 // parseSessionsText removed — now using parseSessionsFromStatus which parses
 // the `openclaw status` output directly (more reliable, shows ALL agents).
-}
 
 /**
  * Fetch recent session history to extract currentTask.

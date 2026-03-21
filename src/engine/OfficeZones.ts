@@ -3,7 +3,7 @@
  * Based on Lena's design: docs/office-zones-design.md
  */
 
-import { tileToScreen, TILE_WIDTH, TILE_HEIGHT } from "./isometric";
+import { tileToScreen } from "./isometric";
 
 export interface OfficeZone {
   id: string;
