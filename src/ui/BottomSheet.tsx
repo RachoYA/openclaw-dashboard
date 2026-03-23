@@ -1,61 +1,79 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useCallback } from "react";
 
 interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
-  snapHeights?: string[]; // e.g. ["30%", "60%", "90%"]
-  defaultSnap?: number; // index into snapHeights
   children: React.ReactNode;
   label?: string;
 }
 
 /**
  * Mobile bottom sheet with drag-to-close handle.
- * Handles touch drag to close (swipe down past threshold).
+ * Only the handle zone captures drag events (avoids fighting scrollable content).
+ * Swipe down > 100px → closes. Release < 100px → snaps back.
  */
 export function BottomSheet({ open, onClose, children, label }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
-  const dragStartY = useRef(0);
-  const currentDeltaY = useRef(0);
+  const handleRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef({ active: false, startY: 0, delta: 0 });
 
+  // Reset inline transform when sheet becomes visible so CSS transition takes over
   useEffect(() => {
     const el = sheetRef.current;
     if (!el) return;
+    if (open) {
+      el.style.transform = "";
+      el.style.transition = "";
+    }
+  }, [open]);
 
-    const onTouchStart = (e: TouchEvent) => {
-      dragStartY.current = e.touches[0].clientY;
-      currentDeltaY.current = 0;
-      el.style.transition = "none";
-    };
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    dragState.current = { active: true, startY: e.touches[0].clientY, delta: 0 };
+    const el = sheetRef.current;
+    if (el) el.style.transition = "none";
+  }, []);
 
-    const onTouchMove = (e: TouchEvent) => {
-      const delta = e.touches[0].clientY - dragStartY.current;
-      if (delta > 0) {
-        currentDeltaY.current = delta;
-        el.style.transform = `translateY(${delta}px)`;
-      }
-    };
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!dragState.current.active) return;
+    const delta = e.touches[0].clientY - dragState.current.startY;
+    if (delta <= 0) return; // only downward drag
+    dragState.current.delta = delta;
+    const el = sheetRef.current;
+    if (el) el.style.transform = `translateY(${delta}px)`;
+  }, []);
 
-    const onTouchEnd = () => {
-      el.style.transition = "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
-      if (currentDeltaY.current > 120) {
+  const handleTouchEnd = useCallback(() => {
+    if (!dragState.current.active) return;
+    dragState.current.active = false;
+    const el = sheetRef.current;
+    if (!el) return;
+    el.style.transition = "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+    if (dragState.current.delta > 100) {
+      // Animate out then close
+      el.style.transform = "translateY(100%)";
+      setTimeout(() => {
+        el.style.transform = "";
         onClose();
-      } else {
-        el.style.transform = "translateY(0)";
-      }
-      currentDeltaY.current = 0;
-    };
-
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: true });
-    el.addEventListener("touchend", onTouchEnd);
-
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-    };
+      }, 300);
+    } else {
+      el.style.transform = "translateY(0)";
+    }
+    dragState.current.delta = 0;
   }, [onClose]);
+
+  // Attach listeners to handle only
+  useEffect(() => {
+    const handle = handleRef.current;
+    if (!handle) return;
+    handle.addEventListener("touchstart", handleTouchStart, { passive: true });
+    handle.addEventListener("touchmove", handleTouchMove, { passive: true });
+    handle.addEventListener("touchend", handleTouchEnd);
+    return () => {
+      handle.removeEventListener("touchstart", handleTouchStart);
+      handle.removeEventListener("touchmove", handleTouchMove);
+      handle.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   return (
     <>
@@ -91,22 +109,35 @@ export function BottomSheet({ open, onClose, children, label }: BottomSheetProps
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
+          willChange: "transform",
         }}
       >
-        {/* Drag handle */}
-        <div style={{ padding: "12px 0 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+        {/* Drag handle — touch events captured here only */}
+        <div
+          ref={handleRef}
+          style={{
+            padding: "12px 0 8px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 4,
+            touchAction: "none", // prevent scroll on handle
+            cursor: "grab",
+            flexShrink: 0,
+          }}
+        >
           <div style={{
             width: 36, height: 4,
             borderRadius: 2,
-            background: "rgba(255,255,255,0.2)",
+            background: "rgba(255,255,255,0.25)",
           }} />
           {label && (
-            <span style={{ fontSize: 12, color: "#a7a9be", fontWeight: 600, paddingBottom: 4 }}>{label}</span>
+            <span style={{ fontSize: 12, color: "#a7a9be", fontWeight: 600, paddingTop: 2 }}>{label}</span>
           )}
         </div>
 
-        {/* Content */}
-        <div style={{ overflowY: "auto", flex: 1 }}>
+        {/* Scrollable content */}
+        <div style={{ overflowY: "auto", flex: 1, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
           {children}
         </div>
       </div>
