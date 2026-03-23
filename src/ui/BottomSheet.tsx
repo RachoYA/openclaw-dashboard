@@ -137,7 +137,10 @@ export function BottomSheet({ open, onClose, children, label }: BottomSheetProps
         </div>
 
         {/* Scrollable content */}
-        <div style={{ overflowY: "auto", flex: 1, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
+        <div
+          className="hide-scrollbar"
+          style={{ overflowY: "auto", flex: 1, WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+        >
           {children}
         </div>
       </div>
