@@ -595,9 +595,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#e9456055"></div></div>
         </div>
-        <div class="agent active" id="agent-artem" data-id="artem"
+        <div class="agent active" id="agent-pm" data-id="pm"
              style="--glow-color:#4ade80; top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('artem')">
+             onclick="selectAgent('pm')">
           <div class="agent-circle" style="background:#4ade8022;">
             🤖
             <div class="status-dot active"></div>
@@ -619,9 +619,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#fbbf2455"></div></div>
         </div>
-        <div class="agent working" id="agent-lena" data-id="lena"
+        <div class="agent working" id="agent-analyst" data-id="analyst"
              style="--glow-color:#fbbf24; top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('lena')">
+             onclick="selectAgent('analyst')">
           <div class="agent-circle" style="background:#fbbf2422;">
             📊
             <div class="status-dot working"></div>
@@ -637,9 +637,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#3b82f655"></div></div>
         </div>
-        <div class="agent active" id="agent-kolya" data-id="kolya"
+        <div class="agent active" id="agent-dev" data-id="dev"
              style="--glow-color:#4ade80; top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('kolya')">
+             onclick="selectAgent('dev')">
           <div class="agent-circle" style="background:#4ade8022;">
             💻
             <div class="status-dot active"></div>
@@ -661,9 +661,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
         </div>
-        <div class="agent offline" id="agent-sasha" data-id="sasha"
+        <div class="agent offline" id="agent-qa" data-id="qa"
              style="top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('sasha')">
+             onclick="selectAgent('qa')">
           <div class="agent-circle" style="background:#55555522;">
             🔍
             <div class="status-dot offline"></div>
@@ -679,9 +679,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
         </div>
-        <div class="agent offline" id="agent-max" data-id="max"
+        <div class="agent offline" id="agent-techlead" data-id="techlead"
              style="top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('max')">
+             onclick="selectAgent('techlead')">
           <div class="agent-circle" style="background:#55555522;">
             ⚙️
             <div class="status-dot offline"></div>
@@ -703,9 +703,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
         </div>
-        <div class="agent offline" id="agent-dima" data-id="dima"
+        <div class="agent offline" id="agent-devops" data-id="devops"
              style="top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('dima')">
+             onclick="selectAgent('devops')">
           <div class="agent-circle" style="background:#55555522;">
             🛠️
             <div class="status-dot offline"></div>
@@ -817,40 +817,40 @@ const WS_URL = BFF_BASE.replace(/^http/, 'ws') + '/ws';
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const AGENTS = {
-  artem: {
+  pm: {
     name: 'Артём', role: 'PM', emoji: '🤖', status: 'active',
     tasks: 12, uptime: '6ч 14м',
     currentTask: 'Планирование спринта 12 — распределение задач по команде',
     progress: 78,
     focus: 85, load: 60,
   },
-  lena: {
+  analyst: {
     name: 'Лена', role: 'Analyst', emoji: '📊', status: 'working',
     tasks: 8, uptime: '5ч 42м',
     currentTask: 'Анализ UX-метрик дашборда — подготовка отчёта',
     progress: 45,
     focus: 70, load: 80,
   },
-  kolya: {
+  dev: {
     name: 'Коля', role: 'Dev', emoji: '💻', status: 'active',
     tasks: 21, uptime: '7ч 03м',
     currentTask: 'Рефакторинг Scene.tsx — переход на top-down renderer',
     progress: 62,
     focus: 90, load: 75,
   },
-  sasha: {
+  qa: {
     name: 'Саша', role: 'QA', emoji: '🔍', status: 'offline',
     tasks: 5, uptime: '0ч',
     currentTask: null, progress: 0,
     focus: 0, load: 0,
   },
-  max: {
+  techlead: {
     name: 'Макс', role: 'TechLead', emoji: '⚙️', status: 'offline',
     tasks: 9, uptime: '0ч',
     currentTask: null, progress: 0,
     focus: 0, load: 0,
   },
-  dima: {
+  devops: {
     name: 'Дима', role: 'DevOps', emoji: '🛠️', status: 'offline',
     tasks: 4, uptime: '0ч',
     currentTask: null, progress: 0,
@@ -1155,7 +1155,7 @@ function scheduleFeedEvent() {
   addFeedItem(ev.emoji, ev.msg);
 
   // also randomly update a live agent's progress
-  const liveAgents = ['artem', 'lena', 'kolya'];
+  const liveAgents = ['pm', 'analyst', 'dev'];
   const rid = liveAgents[Math.floor(Math.random() * liveAgents.length)];
   const ra = AGENTS[rid];
   if (ra.progress < 100) {
