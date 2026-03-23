@@ -97,7 +97,7 @@ export function AgentPanel({ agent, onClose, compact }: AgentPanelProps) {
             <h2 style={{ margin: 0, fontSize: "17px", fontWeight: 700, color: "var(--text)" }}>
               {agent.name}
             </h2>
-            <p style={{ margin: "2px 0 0", fontSize: "13px", color: "#6e6e73" }}>
+            <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--text-secondary)" }}>
               {agent.role}
             </p>
           </div>
@@ -124,7 +124,7 @@ export function AgentPanel({ agent, onClose, compact }: AgentPanelProps) {
         </div>
 
         {agent.currentTask && (
-          <p style={{ margin: "10px 0 0", fontSize: "13px", color: "#3a3a3c", lineHeight: 1.5 }}>
+          <p style={{ margin: "10px 0 0", fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
             📌 {agent.currentTask}
           </p>
         )}
@@ -153,14 +153,14 @@ export function AgentPanel({ agent, onClose, compact }: AgentPanelProps) {
             <div key={i} style={{
               flex: 1, borderRadius: "4px",
               height: `${Math.max(4, val * 100)}%`,
-              background: val > 0 ? `${color}${Math.round(val * 200 + 55).toString(16)}` : "#f2f2f7",
+              background: val > 0 ? `${color}${Math.round(val * 200 + 55).toString(16)}` : "var(--metrics-card-bg)",
               transition: "height 0.3s ease",
             }} />
           ))}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px" }}>
           {["0:00", "4:00", "8:00", "12:00", "16:00", "20:00"].map((t) => (
-            <span key={t} style={{ fontSize: "8px", color: "#aeaeb2" }}>{t}</span>
+            <span key={t} style={{ fontSize: "8px", color: "var(--text-muted)" }}>{t}</span>
           ))}
         </div>
       </div>
@@ -171,7 +171,7 @@ export function AgentPanel({ agent, onClose, compact }: AgentPanelProps) {
           Последние действия
         </div>
         {agentEvents.length === 0 && (
-          <p style={{ fontSize: "12px", color: "#aeaeb2" }}>Нет недавних действий</p>
+          <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>Нет недавних действий</p>
         )}
         {agentEvents.map((ev) => {
           const age = Math.round((Date.now() - new Date(ev.timestamp).getTime()) / 1000);
@@ -181,7 +181,7 @@ export function AgentPanel({ agent, onClose, compact }: AgentPanelProps) {
               <div style={{ flex: 1 }}>
                 <span style={{ fontSize: "12px", color: "var(--text)" }}>{ev.text}</span>
               </div>
-              <span style={{ fontSize: "10px", color: "#aeaeb2", flexShrink: 0 }}>{ageStr}</span>
+              <span style={{ fontSize: "10px", color: "var(--text-muted)", flexShrink: 0 }}>{ageStr}</span>
             </div>
           );
         })}
