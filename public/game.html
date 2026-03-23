@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenClaw Agent Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d1a;
+    --panel: #16213e;
+    --panel2: #1a2747;
+    --accent: #e94560;
+    --text: #e0e0e0;
+    --text-muted: #7a8aaa;
+    --green: #4ade80;
+    --yellow: #fbbf24;
+    --blue: #3b82f6;
+    --red: #f87171;
+    --border: #2a3a5a;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* HEADER */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    height: 52px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .logo-icon { font-size: 22px; }
+  .header-stats {
+    display: flex;
+    gap: 20px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .header-stats span { color: var(--text); font-weight: 600; }
+  .clock {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* MAIN LAYOUT */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* SCENE */
+  .scene-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse at 30% 40%, #16213e55 0%, transparent 60%),
+      radial-gradient(ellipse at 70% 70%, #1a2a4a44 0%, transparent 60%),
+      var(--bg);
+  }
+
+  .office-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 170px);
+    grid-template-rows: repeat(3, 150px);
+    gap: 12px;
+    padding: 20px;
+    position: relative;
+  }
+
+  .cell {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .cell.zone-dev { border-color: #3b82f622; }
+  .cell.zone-pm  { border-color: #e9456022; }
+  .cell.zone-qa  { border-color: #fbbf2422; }
+
+  .zone-label {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  /* decorative desk */
+  .desk {
+    position: absolute;
+    width: 70px;
+    height: 44px;
+    background: #1e2f50;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    bottom: 28px;
+  }
+  .monitor {
+    position: absolute;
+    width: 28px;
+    height: 20px;
+    background: #0d1929;
+    border: 1.5px solid #3b82f655;
+    border-radius: 4px;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .monitor-glow {
+    width: 16px;
+    height: 10px;
+    border-radius: 2px;
+    animation: monitorPulse 3s ease-in-out infinite;
+  }
+
+  @keyframes monitorPulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* AGENT */
+  .agent {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.2s;
+    z-index: 2;
+  }
+  .agent:hover { transform: scale(1.1); }
+  .agent:hover .agent-circle { box-shadow: 0 0 20px var(--glow-color, #4ade80); }
+  .agent.selected .agent-circle {
+    box-shadow: 0 0 0 3px white, 0 0 20px var(--glow-color, #4ade80);
+  }
+
+  .agent-circle {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    border: 2px solid transparent;
+    transition: box-shadow 0.3s, border-color 0.3s;
+    position: relative;
+  }
+
+  .agent.active .agent-circle {
+    animation: agentBob 2s ease-in-out infinite;
+    border-color: var(--glow-color, #4ade80);
+    box-shadow: 0 0 10px var(--glow-color, #4ade80);
+  }
+  .agent.working .agent-circle {
+    animation: agentBob 3s ease-in-out infinite;
+    border-color: var(--glow-color, #fbbf24);
+    box-shadow: 0 0 10px var(--glow-color, #fbbf24);
+  }
+  .agent.offline .agent-circle {
+    opacity: 0.45;
+    filter: grayscale(0.7);
+  }
+
+  @keyframes agentBob {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+  }
+
+  .status-dot {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--panel);
+    bottom: 2px;
+    right: 2px;
+  }
+  .status-dot.active  { background: var(--green); animation: dotPulse 2s infinite; }
+  .status-dot.working { background: var(--yellow); animation: dotPulse 3s infinite; }
+  .status-dot.offline { background: #555; }
+
+  @keyframes dotPulse {
+    0%, 100% { box-shadow: 0 0 0 0 currentColor; }
+    50% { box-shadow: 0 0 0 4px transparent; }
+  }
+
+  .agent-name {
+    font-size: 10px;
+    font-weight: 600;
+    margin-top: 5px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .agent-role {
+    font-size: 8px;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+
+  /* SIDE PANEL */
+  .side-panel {
+    width: 300px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+    transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+  }
+  .side-panel.hidden { transform: translateX(100%); width: 0; overflow: hidden; border: none; }
+
+  .panel-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .panel-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    flex-shrink: 0;
+  }
+  .panel-info { flex: 1; }
+  .panel-name { font-size: 16px; font-weight: 700; }
+  .panel-role { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 5px;
+  }
+  .status-badge.active  { background: #4ade8022; color: var(--green); }
+  .status-badge.working { background: #fbbf2422; color: var(--yellow); }
+  .status-badge.offline { background: #55555522; color: #888; }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: color 0.2s, background 0.2s;
+  }
+  .close-btn:hover { color: var(--text); background: var(--border); }
+
+  .panel-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+
+  /* Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat-card {
+    background: var(--panel2);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .stat-val { font-size: 20px; font-weight: 700; }
+  .stat-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Current task */
+  .task-text {
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .progress-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--accent);
+    transition: width 1s ease;
+  }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* Mood bars */
+  .mood-bar { margin-bottom: 10px; }
+  .mood-label { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; }
+  .mood-label span:last-child { color: var(--text-muted); }
+  .mood-track {
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .mood-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1s ease;
+  }
+
+  /* Buttons */
+  .action-btns {
+    display: flex;
+    gap: 8px;
+    padding: 16px 20px;
+  }
+  .btn {
+    flex: 1;
+    padding: 9px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--panel2);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+  }
+  .btn:hover { background: var(--border); border-color: #4a5a7a; }
+  .btn:active { transform: scale(0.95); }
+  .btn.danger { border-color: #e9456044; color: var(--accent); }
+  .btn.danger:hover { background: #e9456022; }
+
+  /* BOTTOM ACTIVITY FEED */
+  .activity-feed {
+    height: 120px;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .feed-header {
+    padding: 8px 16px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .feed-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: dotPulse 2s infinite;
+    box-shadow: 0 0 6px var(--green);
+  }
+  .feed-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column-reverse;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .feed-item {
+    padding: 5px 0;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    animation: fadeSlideIn 0.4s forwards;
+  }
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .feed-time { color: var(--text-muted); flex-shrink: 0; font-size: 10px; font-variant-numeric: tabular-nums; }
+  .feed-emoji { flex-shrink: 0; }
+  .feed-msg { color: var(--text); flex: 1; }
+  .feed-msg strong { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <span class="logo-icon">🏭</span>
+    OpenClaw Dashboard — Фабрика
+  </div>
+  <div class="header-stats">
+    <div>Онлайн: <span id="online-count">3</span></div>
+    <div>Задач: <span id="task-count">7</span></div>
+    <div>Событий: <span id="event-count">0</span></div>
+  </div>
+  <div class="clock" id="clock">--:--:--</div>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SCENE -->
+  <div class="scene-wrap">
+    <div class="office-grid" id="grid">
+
+      <!-- Cell 0: PM Zone -->
+      <div class="cell zone-pm">
+        <span class="zone-label">PM зона</span>
+        <div class="desk">
+          <div class="monitor"><div class="monitor-glow" style="background:#e9456055"></div></div>
+        </div>
+        <div class="agent active" id="agent-artem" data-id="artem"
+             style="--glow-color:#4ade80; top:14px; left:50%; transform:translateX(-50%);"
+             onclick="selectAgent('artem')">
+          <div class="agent-circle" style="background:#4ade8022;">
+            🤖
+            <div class="status-dot active"></div>
+          </div>
+          <div class="agent-name">Артём</div>
+          <div class="agent-role">PM</div>
+        </div>
+      </div>
+
+      <!-- Cell 1: Empty / Meeting -->
+      <div class="cell" style="background:#12192e;">
+        <span class="zone-label">Переговорная</span>
+        <div style="font-size:28px;opacity:0.15;">🪑</div>
+      </div>
+
+      <!-- Cell 2: Analyst Zone -->
+      <div class="cell zone-pm">
+        <span class="zone-label">Analyst</span>
+        <div class="desk">
+          <div class="monitor"><div class="monitor-glow" style="background:#fbbf2455"></div></div>
+        </div>
+        <div class="agent working" id="agent-lena" data-id="lena"
+             style="--glow-color:#fbbf24; top:14px; left:50%; transform:translateX(-50%);"
+             onclick="selectAgent('lena')">
+          <div class="agent-circle" style="background:#fbbf2422;">
+            📊
+            <div class="status-dot working"></div>
+          </div>
+          <div class="agent-name">Лена</div>
+          <div class="agent-role">Analyst</div>
+        </div>
+      </div>
+
+      <!-- Cell 3: Dev Zone -->
+      <div class="cell zone-dev">
+        <span class="zone-label">Dev</span>
+        <div class="desk">
+          <div class="monitor"><div class="monitor-glow" style="background:#3b82f655"></div></div>
+        </div>
+        <div class="agent active" id="agent-kolya" data-id="kolya"
+             style="--glow-color:#4ade80; top:14px; left:50%; transform:translateX(-50%);"
+             onclick="selectAgent('kolya')">
+          <div class="agent-circle" style="background:#4ade8022;">
+            💻
+            <div class="status-dot active"></div>
+          </div>
+          <div class="agent-name">Коля</div>
+          <div class="agent-role">Dev</div>
+        </div>
+      </div>
+
+      <!-- Cell 4: Server room -->
+      <div class="cell" style="background:#0e1625;">
+        <span class="zone-label">Серверная</span>
+        <div style="font-size:36px;opacity:0.18;">🖥️</div>
+      </div>
+
+      <!-- Cell 5: QA Zone -->
+      <div class="cell zone-qa">
+        <span class="zone-label">QA</span>
+        <div class="desk">
+          <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
+        </div>
+        <div class="agent offline" id="agent-sasha" data-id="sasha"
+             style="top:14px; left:50%; transform:translateX(-50%);"
+             onclick="selectAgent('sasha')">
+          <div class="agent-circle" style="background:#55555522;">
+            🔍
+            <div class="status-dot offline"></div>
+          </div>
+          <div class="agent-name">Саша</div>
+          <div class="agent-role">QA</div>
+        </div>
+      </div>
+
+      <!-- Cell 6: TechLead Zone -->
+      <div class="cell zone-dev">
+        <span class="zone-label">TechLead</span>
+        <div class="desk">
+          <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
+        </div>
+        <div class="agent offline" id="agent-max" data-id="max"
+             style="top:14px; left:50%; transform:translateX(-50%);"
+             onclick="selectAgent('max')">
+          <div class="agent-circle" style="background:#55555522;">
+            ⚙️
+            <div class="status-dot offline"></div>
+          </div>
+          <div class="agent-name">Макс</div>
+          <div class="agent-role">TechLead</div>
+        </div>
+      </div>
+
+      <!-- Cell 7: Break room -->
+      <div class="cell" style="background:#12172a;">
+        <span class="zone-label">Кухня</span>
+        <div style="font-size:32px;opacity:0.2;">☕</div>
+      </div>
+
+      <!-- Cell 8: DevOps Zone -->
+      <div class="cell zone-dev">
+        <span class="zone-label">DevOps</span>
+        <div class="desk">
+          <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
+        </div>
+        <div class="agent offline" id="agent-dima" data-id="dima"
+             style="top:14px; left:50%; transform:translateX(-50%);"
+             onclick="selectAgent('dima')">
+          <div class="agent-circle" style="background:#55555522;">
+            🛠️
+            <div class="status-dot offline"></div>
+          </div>
+          <div class="agent-name">Дима</div>
+          <div class="agent-role">DevOps</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SIDE PANEL -->
+  <div class="side-panel hidden" id="side-panel">
+    <div class="panel-header">
+      <div class="panel-avatar" id="p-avatar"></div>
+      <div class="panel-info">
+        <div class="panel-name" id="p-name"></div>
+        <div class="panel-role" id="p-role"></div>
+        <div class="status-badge" id="p-badge"></div>
+      </div>
+      <button class="close-btn" onclick="closePanel()">✕</button>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">Статистика</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-val" id="p-tasks" style="color:var(--green)">—</div>
+          <div class="stat-label">Задач выполнено</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="p-uptime" style="color:var(--blue)">—</div>
+          <div class="stat-label">Uptime сегодня</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section" id="task-section">
+      <div class="section-title">Текущая задача</div>
+      <div class="task-text" id="p-task"></div>
+      <div class="progress-bar"><div class="progress-fill" id="p-progress"></div></div>
+      <div class="progress-label"><span>Прогресс</span><span id="p-progress-label">0%</span></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">Состояние</div>
+      <div class="mood-bar">
+        <div class="mood-label"><span>🧠 Фокус</span><span id="p-focus-val">—</span></div>
+        <div class="mood-track"><div class="mood-fill" id="p-focus" style="background:var(--blue)"></div></div>
+      </div>
+      <div class="mood-bar">
+        <div class="mood-label"><span>⚡ Нагрузка</span><span id="p-load-val">—</span></div>
+        <div class="mood-track"><div class="mood-fill" id="p-load" style="background:var(--yellow)"></div></div>
+      </div>
+    </div>
+
+    <div class="action-btns">
+      <button class="btn" onclick="actionBtn('pause')">⏸️ Пауза</button>
+      <button class="btn" onclick="actionBtn('restart')">🔄 Restart</button>
+      <button class="btn danger" onclick="actionBtn('logs')">📋 Логи</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ACTIVITY FEED -->
+<div class="activity-feed">
+  <div class="feed-header">
+    <div class="feed-dot"></div>
+    Activity Feed — Live
+  </div>
+  <div class="feed-list" id="feed-list"></div>
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const AGENTS = {
+  artem: {
+    name: 'Артём', role: 'PM', emoji: '🤖', status: 'active',
+    tasks: 12, uptime: '6ч 14м',
+    currentTask: 'Планирование спринта 12 — распределение задач по команде',
+    progress: 78,
+    focus: 85, load: 60,
+  },
+  lena: {
+    name: 'Лена', role: 'Analyst', emoji: '📊', status: 'working',
+    tasks: 8, uptime: '5ч 42м',
+    currentTask: 'Анализ UX-метрик дашборда — подготовка отчёта',
+    progress: 45,
+    focus: 70, load: 80,
+  },
+  kolya: {
+    name: 'Коля', role: 'Dev', emoji: '💻', status: 'active',
+    tasks: 21, uptime: '7ч 03м',
+    currentTask: 'Рефакторинг Scene.tsx — переход на top-down renderer',
+    progress: 62,
+    focus: 90, load: 75,
+  },
+  sasha: {
+    name: 'Саша', role: 'QA', emoji: '🔍', status: 'offline',
+    tasks: 5, uptime: '0ч',
+    currentTask: null, progress: 0,
+    focus: 0, load: 0,
+  },
+  max: {
+    name: 'Макс', role: 'TechLead', emoji: '⚙️', status: 'offline',
+    tasks: 9, uptime: '0ч',
+    currentTask: null, progress: 0,
+    focus: 0, load: 0,
+  },
+  dima: {
+    name: 'Дима', role: 'DevOps', emoji: '🛠️', status: 'offline',
+    tasks: 4, uptime: '0ч',
+    currentTask: null, progress: 0,
+    focus: 0, load: 0,
+  },
+};
+
+const FEED_EVENTS = [
+  { emoji: '🤖', msg: '<strong>Артём</strong> → <strong>Лена</strong>: task assigned — подготовь UX-отчёт к завтрашнему стенду' },
+  { emoji: '💻', msg: '<strong>Коля</strong>: commit pushed — <em>fix: replace hardcoded colors in AgentPanel</em>' },
+  { emoji: '📊', msg: '<strong>Лена</strong>: открыла PR #83 — docs: UX Design Concept' },
+  { emoji: '🤖', msg: '<strong>Артём</strong>: спринт 12 запущен — 7 задач в работе' },
+  { emoji: '💻', msg: '<strong>Коля</strong>: PR review requested у <strong>Артёма</strong>' },
+  { emoji: '📊', msg: '<strong>Лена</strong>: аналитика готова — дашборд DAU +18%' },
+  { emoji: '🤖', msg: '<strong>Артём</strong> → <strong>Коле</strong>: task — Issue #80, адаптивная тема' },
+  { emoji: '💻', msg: '<strong>Коля</strong>: build ✅ — tsc clean, dist/index.js 241kb' },
+  { emoji: '🤖', msg: '<strong>Артём</strong>: standup — статус по Issue #71 обновлён' },
+  { emoji: '📊', msg: '<strong>Лена</strong>: дизайн-токены согласованы с командой' },
+  { emoji: '💻', msg: '<strong>Коля</strong>: merge main → feat/top-down — конфликтов нет' },
+  { emoji: '🤖', msg: '<strong>Артём</strong>: milestone v0.4 — 5/8 задач закрыто' },
+  { emoji: '📊', msg: '<strong>Лена</strong>: Issue #84 закрыта — game.html сдан' },
+  { emoji: '💻', msg: '<strong>Коля</strong>: unit tests added — coverage 74%' },
+];
+
+let selectedAgent = null;
+let eventIndex = 0;
+let totalEvents = 0;
+
+// ─── CLOCK ───────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── AGENT SELECT ────────────────────────────────────────────────────────────
+function selectAgent(id) {
+  // deselect previous
+  if (selectedAgent) {
+    document.getElementById('agent-' + selectedAgent)?.classList.remove('selected');
+  }
+  selectedAgent = id;
+  document.getElementById('agent-' + id)?.classList.add('selected');
+
+  const a = AGENTS[id];
+  const panel = document.getElementById('side-panel');
+  panel.classList.remove('hidden');
+
+  // avatar
+  const avatar = document.getElementById('p-avatar');
+  avatar.textContent = a.emoji;
+  const bgMap = { active: '#4ade8022', working: '#fbbf2422', offline: '#55555522' };
+  avatar.style.background = bgMap[a.status] || '#55555522';
+
+  document.getElementById('p-name').textContent = a.name;
+  document.getElementById('p-role').textContent = a.role;
+
+  const badge = document.getElementById('p-badge');
+  const labelMap = { active: '🟢 Активен', working: '🟡 Работает', offline: '⚫ Оффлайн' };
+  badge.textContent = labelMap[a.status];
+  badge.className = 'status-badge ' + a.status;
+
+  document.getElementById('p-tasks').textContent = a.tasks;
+  document.getElementById('p-uptime').textContent = a.uptime;
+
+  const taskSection = document.getElementById('task-section');
+  if (a.currentTask) {
+    taskSection.style.display = '';
+    document.getElementById('p-task').textContent = a.currentTask;
+    document.getElementById('p-progress').style.width = a.progress + '%';
+    document.getElementById('p-progress-label').textContent = a.progress + '%';
+  } else {
+    taskSection.style.display = 'none';
+  }
+
+  document.getElementById('p-focus').style.width = a.focus + '%';
+  document.getElementById('p-focus-val').textContent = a.focus + '%';
+  document.getElementById('p-load').style.width = a.load + '%';
+  document.getElementById('p-load-val').textContent = a.load + '%';
+}
+
+function closePanel() {
+  const panel = document.getElementById('side-panel');
+  panel.classList.add('hidden');
+  if (selectedAgent) {
+    document.getElementById('agent-' + selectedAgent)?.classList.remove('selected');
+    selectedAgent = null;
+  }
+}
+
+function actionBtn(action) {
+  const labels = { pause: '⏸️ Агент поставлен на паузу', restart: '🔄 Агент перезапущен', logs: '📋 Логи открыты в консоли' };
+  addFeedItem('⚡', `<strong>Действие</strong>: ${labels[action] || action}`);
+}
+
+// ─── ACTIVITY FEED ───────────────────────────────────────────────────────────
+function addFeedItem(emoji, msg) {
+  totalEvents++;
+  document.getElementById('event-count').textContent = totalEvents;
+
+  const now = new Date();
+  const time = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  const list = document.getElementById('feed-list');
+  const item = document.createElement('div');
+  item.className = 'feed-item';
+  item.innerHTML = `
+    <span class="feed-time">${time}</span>
+    <span class="feed-emoji">${emoji}</span>
+    <span class="feed-msg">${msg}</span>
+  `;
+  // prepend (list is flex column-reverse, so this appears at bottom visually)
+  list.prepend(item);
+
+  // keep max 50 items
+  while (list.children.length > 50) list.removeChild(list.lastChild);
+}
+
+function scheduleFeedEvent() {
+  const ev = FEED_EVENTS[eventIndex % FEED_EVENTS.length];
+  eventIndex++;
+  addFeedItem(ev.emoji, ev.msg);
+
+  // also randomly update a live agent's progress
+  const liveAgents = ['artem', 'lena', 'kolya'];
+  const rid = liveAgents[Math.floor(Math.random() * liveAgents.length)];
+  const ra = AGENTS[rid];
+  if (ra.progress < 100) {
+    ra.progress = Math.min(100, ra.progress + Math.floor(Math.random() * 5));
+    if (selectedAgent === rid) {
+      document.getElementById('p-progress').style.width = ra.progress + '%';
+      document.getElementById('p-progress-label').textContent = ra.progress + '%';
+    }
+  }
+
+  const nextDelay = 3000 + Math.random() * 2000;
+  setTimeout(scheduleFeedEvent, nextDelay);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+// add 2 initial events immediately
+addFeedItem('🏭', '<strong>Фабрика</strong>: дашборд запущен — 3 агента онлайн');
+addFeedItem('🤖', '<strong>Артём</strong>: спринт 12 начат — задачи распределены');
+
+setTimeout(scheduleFeedEvent, 2000);
+</script>
+</body>
+</html>
