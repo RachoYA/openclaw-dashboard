@@ -5,10 +5,12 @@
  * Caches in Redis, publishes updates via Redis pub/sub, serves WebSocket to dashboard.
  *
  * Env:
- *   PORT              — HTTP + WebSocket server port (default 3101)
- *   POLL_INTERVAL     — ms between status polls (default 10000)
- *   OPENCLAW_DATA_DIR — path to openclaw agents dir (default /openclaw-data/agents)
- *   REDIS_URL         — Redis connection URL (default "redis://localhost:6379")
+ *   PORT                — HTTP + WebSocket server port (default 3101)
+ *   POLL_INTERVAL       — ms between status polls (default 10000)
+ *   OPENCLAW_DATA_DIR   — path to openclaw agents dir (default /openclaw-data/agents)
+ *   REDIS_URL           — Redis connection URL (default "redis://localhost:6379")
+ *   TELEGRAM_BOT_TOKEN  — Telegram bot token for Фабрика group notifications
+ *   TELEGRAM_CHAT_ID    — Telegram chat/group id (default -5102635917)
  */
 
 import { WebSocketServer } from "ws";
@@ -23,6 +25,8 @@ const OPENCLAW_DATA_DIR = process.env.OPENCLAW_DATA_DIR || "/openclaw-data/agent
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
 const GITHUB_REPOS = (process.env.GITHUB_REPOS || "RachoYA/ventMaind,RachoYA/openclaw-dashboard").split(",");
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "-5102635917";
 
 // Redis channels
 const CHANNEL_AGENTS = "dashboard:agents";
@@ -268,6 +272,150 @@ async function buildAgentStates() {
 }
 
 // ---------------------------------------------------------------------------
+// Task system — T-NNN numbering, in-memory store (+ Redis for persistence)
+// ---------------------------------------------------------------------------
+
+const CACHE_KEY_TASKS_COUNTER = "dashboard:tasks:counter";
+const CACHE_KEY_TASKS_PREFIX  = "dashboard:tasks:agent:";
+const MAX_TASKS_PER_AGENT = 10;
+
+// In-memory fallback (no Redis)
+const inMemoryTasks = {};     // agentId → Task[]
+let inMemoryCounter = 1000;   // T-1001, T-1002...
+
+async function getNextTaskId() {
+  if (redisConnected) {
+    try {
+      const id = await redisCache.incr(CACHE_KEY_TASKS_COUNTER);
+      return `T-${String(id).padStart(3, "0")}`;
+    } catch {}
+  }
+  return `T-${String(++inMemoryCounter).padStart(3, "0")}`;
+}
+
+async function saveTaskForAgent(agentId, task) {
+  if (redisConnected) {
+    try {
+      const key = CACHE_KEY_TASKS_PREFIX + agentId;
+      await redisCache.lPush(key, JSON.stringify(task));
+      await redisCache.lTrim(key, 0, MAX_TASKS_PER_AGENT - 1);
+      return;
+    } catch {}
+  }
+  if (!inMemoryTasks[agentId]) inMemoryTasks[agentId] = [];
+  inMemoryTasks[agentId].unshift(task);
+  if (inMemoryTasks[agentId].length > MAX_TASKS_PER_AGENT) {
+    inMemoryTasks[agentId] = inMemoryTasks[agentId].slice(0, MAX_TASKS_PER_AGENT);
+  }
+}
+
+async function getTasksForAgent(agentId) {
+  if (redisConnected) {
+    try {
+      const key = CACHE_KEY_TASKS_PREFIX + agentId;
+      const raw = await redisCache.lRange(key, 0, MAX_TASKS_PER_AGENT - 1);
+      return raw.map((r) => JSON.parse(r));
+    } catch {}
+  }
+  return inMemoryTasks[agentId] || [];
+}
+
+/**
+ * Send a Telegram notification to the Фабрика group.
+ */
+async function sendTelegramNotification(text) {
+  if (!TELEGRAM_BOT_TOKEN) return;
+  try {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text,
+        parse_mode: "HTML",
+      }),
+    });
+  } catch (err) {
+    console.warn("Telegram notification failed:", err.message);
+  }
+}
+
+/**
+ * Create a new task, generate T-NNN, schedule agent acceptance in 2-4s.
+ */
+async function createTask({ agentId, message, fromUser }) {
+  const taskId = await getNextTaskId();
+  const now = new Date().toISOString();
+
+  const agentName = AGENT_NAMES[agentId] || agentId;
+
+  const task = {
+    id: taskId,
+    agentId,
+    agentName,
+    message,
+    fromUser: fromUser || "Пользователь",
+    status: "pending",    // pending → accepted → done
+    createdAt: now,
+    acceptedAt: null,
+  };
+
+  await saveTaskForAgent(agentId, task);
+
+  // Broadcast to all WS clients
+  broadcastWs(JSON.stringify({ type: "task_created", data: task }));
+
+  // Log to event feed
+  await logEvent({
+    type: "task_created",
+    agentId,
+    agentName,
+    taskId,
+    message,
+    fromUser: task.fromUser,
+  });
+
+  // Schedule agent acceptance in 2-4 seconds (simulated AI response)
+  const delay = 2000 + Math.random() * 2000;
+  setTimeout(async () => {
+    task.status = "accepted";
+    task.acceptedAt = new Date().toISOString();
+
+    // Update in store (overwrite first item)
+    if (redisConnected) {
+      try {
+        const key = CACHE_KEY_TASKS_PREFIX + agentId;
+        const raw = await redisCache.lIndex(key, 0);
+        if (raw) {
+          const stored = JSON.parse(raw);
+          if (stored.id === taskId) {
+            await redisCache.lSet(key, 0, JSON.stringify(task));
+          }
+        }
+      } catch {}
+    } else {
+      const list = inMemoryTasks[agentId] || [];
+      const idx = list.findIndex((t) => t.id === taskId);
+      if (idx !== -1) list[idx] = task;
+    }
+
+    // Broadcast acceptance
+    broadcastWs(JSON.stringify({ type: "task_accepted", data: task }));
+    await logEvent({ type: "task_accepted", agentId, agentName, taskId });
+
+    // Telegram notification
+    await sendTelegramNotification(
+      `✅ <b>${agentName}</b> принял задачу <b>${taskId}</b>\n` +
+      `📝 ${message}\n` +
+      `👤 От: ${task.fromUser}`
+    );
+  }, delay);
+
+  return task;
+}
+
+// ---------------------------------------------------------------------------
 // Event log (stored in Redis list, last 100 events)
 // ---------------------------------------------------------------------------
 
@@ -408,6 +556,58 @@ const httpServer = createServer((req, res) => {
       res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
       res.end(JSON.stringify(metrics));
     });
+    return;
+  }
+
+  // ── Task routes ──────────────────────────────────────────────────────────
+
+  // GET /tasks/:agentId — history of last 10 tasks for agent
+  const taskListMatch = req.url.match(/^\/tasks\/([^/?]+)$/);
+  if (taskListMatch && req.method === "GET") {
+    const agentId = decodeURIComponent(taskListMatch[1]);
+    getTasksForAgent(agentId).then((tasks) => {
+      res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+      res.end(JSON.stringify(tasks));
+    });
+    return;
+  }
+
+  // POST /tasks — create a new task
+  if (req.url === "/tasks" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", async () => {
+      try {
+        const { agentId, message, fromUser } = JSON.parse(body || "{}");
+        if (!agentId || !message) {
+          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ error: "agentId and message are required" }));
+          return;
+        }
+        if (!AGENT_NAMES[agentId]) {
+          res.writeHead(404, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ error: `Unknown agent: ${agentId}` }));
+          return;
+        }
+        const task = await createTask({ agentId, message, fromUser: fromUser || "Пользователь" });
+        res.writeHead(201, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify(task));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // CORS pre-flight
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
+    res.end();
     return;
   }
 
