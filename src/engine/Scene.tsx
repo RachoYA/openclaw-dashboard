@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from "react";
 import type { AgentState } from "@/data/types";
-import { tileToScreen, TILE_WIDTH, TILE_HEIGHT } from "./isometric";
+import { tileToScreen, TILE_WIDTH, TILE_HEIGHT, tilePath } from "./orthographic";
 import { ANIMATIONS } from "./Animations";
 import { type MessageParticle, createParticle, updateParticle, drawParticle } from "./MessageParticle";
 import { OFFICE_ZONES, getZoneAt, drawZoneLabel } from "./OfficeZones";
@@ -107,8 +107,11 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const currentAgents = agentsRef.current;
     const selZone = selectedZoneRef.current;
 
-    const offsetX = W / 2 + panRef.current.x;
-    const offsetY = H / 2 - 50 + panRef.current.y;
+    // Top-down: center the grid rectangle in the viewport
+    const gridW = GRID_COLS * TILE_WIDTH;
+    const gridH = GRID_ROWS * TILE_HEIGHT;
+    const offsetX = W / 2 - gridW / 2 + panRef.current.x;
+    const offsetY = H / 2 - gridH / 2 + panRef.current.y;
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -146,16 +149,12 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       ctx.fillRect(-W, -H, W * 3, H * 3);
     }
 
-    // --- Floor tiles ---
+    // --- Floor tiles (top-down: square tiles) ---
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const { x, y } = tileToScreen(col, row);
         const sx = x + offsetX, sy = y + offsetY;
-        const hw = TILE_WIDTH / 2, hh = TILE_HEIGHT / 2;
-        ctx.beginPath();
-        ctx.moveTo(sx, sy - hh); ctx.lineTo(sx + hw, sy);
-        ctx.lineTo(sx, sy + hh); ctx.lineTo(sx - hw, sy);
-        ctx.closePath();
+        tilePath(ctx, sx, sy);
         const zone = getZoneAt(col, row);
         const isLt = (col + row) % 2 === 0;
         if (zone) {
@@ -369,8 +368,11 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const zoom = zoomRef.current;
     const mx = (clientX - rect.left - W / 2) / zoom + W / 2;
     const my = (clientY - rect.top - H / 2) / zoom + H / 2;
-    const offsetX = W / 2 + panRef.current.x;
-    const offsetY = H / 2 - 50 + panRef.current.y;
+    // Top-down: same centering as render
+    const gridW = GRID_COLS * TILE_WIDTH;
+    const gridH = GRID_ROWS * TILE_HEIGHT;
+    const offsetX = W / 2 - gridW / 2 + panRef.current.x;
+    const offsetY = H / 2 - gridH / 2 + panRef.current.y;
 
     // Hit test agents — match render position (sprite drawn at sy - SPRITE_H - 4)
     const currentAgents = agentsRef.current;
@@ -387,11 +389,13 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const zoneClick = onZoneClickRef.current;
     if (zoneClick) {
       for (const zone of OFFICE_ZONES) {
-        const cc = (zone.col1 + zone.col2) / 2, cr = (zone.row1 + zone.row2) / 2;
-        const { x, y } = tileToScreen(cc, cr);
-        const zw = (zone.col2 - zone.col1 + 1) * TILE_WIDTH / 2;
-        const zh = (zone.row2 - zone.row1 + 1) * TILE_HEIGHT / 2;
-        if (Math.abs(mx - (x + offsetX)) < zw && Math.abs(my - (y + offsetY)) < zh) {
+        // Top-down: zone is a pixel rectangle; tileToScreen returns tile center
+        // Zone top-left pixel = (zone.col1 * TILE_WIDTH, zone.row1 * TILE_HEIGHT) + offset
+        const zPixX = zone.col1 * TILE_WIDTH + offsetX;
+        const zPixY = zone.row1 * TILE_HEIGHT + offsetY;
+        const zw = (zone.col2 - zone.col1 + 1) * TILE_WIDTH;
+        const zh = (zone.row2 - zone.row1 + 1) * TILE_HEIGHT;
+        if (mx >= zPixX && mx <= zPixX + zw && my >= zPixY && my <= zPixY + zh) {
           zoneClick(curZone === zone.id ? null : zone.id);
           return;
         }
