@@ -543,6 +543,29 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
+  // GET /agents — REST fallback (same data as WS type=agents)
+  if (req.url === "/agents" && req.method === "GET") {
+    const sendAgents = (data) => {
+      res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+      res.end(JSON.stringify(data));
+    };
+    if (redisConnected) {
+      redisCache.get(CACHE_KEY_AGENTS).then((cached) => {
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            sendAgents(parsed.data || parsed);
+            return;
+          } catch {}
+        }
+        sendAgents(latestState);
+      }).catch(() => sendAgents(latestState));
+    } else {
+      sendAgents(latestState);
+    }
+    return;
+  }
+
   if (req.url === "/events") {
     getRecentEvents().then((events) => {
       res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });

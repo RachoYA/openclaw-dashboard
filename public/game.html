@@ -813,7 +813,7 @@ const BFF_BASE = (() => {
   return `${proto}//${location.hostname}:3101`;
 })();
 
-const WS_URL = BFF_BASE.replace(/^http/, 'ws') + '/ws';
+const WS_URL = BFF_BASE.replace(/^http/, 'ws').replace(/\/db$/, '') + '/ws';
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const AGENTS = {
@@ -908,8 +908,15 @@ function connectWs() {
       onTaskCreated(msg.data);
     } else if (msg.type === 'task_accepted') {
       onTaskAccepted(msg.data);
+    } else if (msg.type === 'agents') {
+      onAgentsUpdate(msg.data);
+    } else if (msg.type === 'events') {
+      onEventsUpdate(msg.data);
+    } else if (msg.type === 'metrics') {
+      onMetricsUpdate(msg.data);
+    } else if (msg.type === 'status_change') {
+      onStatusChange(msg.data);
     }
-    // agents / events / metrics updates can be handled here in future
   };
 
   ws.onclose = () => scheduleWsReconnect();
@@ -951,6 +958,137 @@ function showToast(html) {
   t.innerHTML = html;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 4200);
+}
+
+// ─── LIVE DATA HANDLERS ───────────────────────────────────────────────────────
+
+/**
+ * Map BFF status strings to display status used in CSS classes.
+ * BFF statuses: talking, working, thinking, idle, waiting, sleeping, deploying, testing, reviewing
+ * CSS classes used: active, working, offline
+ */
+function mapStatus(s) {
+  if (!s) return 'offline';
+  if (s === 'talking' || s === 'active') return 'active';
+  if (s === 'working' || s === 'thinking' || s === 'reviewing' || s === 'deploying' || s === 'testing') return 'working';
+  if (s === 'idle') return 'active';
+  return 'offline'; // waiting, sleeping
+}
+
+function onAgentsUpdate(agents) {
+  if (!Array.isArray(agents)) return;
+  agents.forEach(a => {
+    const live = a;
+    const existing = AGENTS[a.id];
+    if (!existing) return;
+
+    const cssStatus = mapStatus(a.status);
+
+    // Update AGENTS data store
+    existing.status = cssStatus;
+    if (a.currentTask) existing.currentTask = a.currentTask;
+    if (a.lastActiveAt) {
+      // compute uptime from lastActiveAt
+      const diffMs = Date.now() - new Date(a.lastActiveAt).getTime();
+      const h = Math.floor(diffMs / 3600000);
+      const m = Math.floor((diffMs % 3600000) / 60000);
+      existing.uptime = `${h}ч ${m}м`;
+    }
+
+    // Update tile DOM
+    const el = document.getElementById('agent-' + a.id);
+    if (el) {
+      el.className = `agent ${cssStatus}`;
+      const dot = el.querySelector('.status-dot');
+      if (dot) { dot.className = `status-dot ${cssStatus}`; }
+    }
+
+    // Update panel if this agent is selected
+    if (selectedAgent === a.id) {
+      const badge = document.getElementById('p-badge');
+      if (badge) {
+        const labelMap = {
+          active: '🟢 Активен', working: '🟡 Работает', offline: '⚫ Оффлайн',
+        };
+        badge.textContent = labelMap[cssStatus] || cssStatus;
+        badge.className = 'status-badge ' + cssStatus;
+      }
+      const pUptime = document.getElementById('p-uptime');
+      if (pUptime && existing.uptime) pUptime.textContent = existing.uptime;
+      const taskSection = document.getElementById('task-section');
+      if (taskSection) {
+        if (existing.currentTask) {
+          taskSection.style.display = '';
+          const pTask = document.getElementById('p-task');
+          if (pTask) pTask.textContent = existing.currentTask;
+        } else {
+          taskSection.style.display = 'none';
+        }
+      }
+    }
+  });
+
+  // Update online-count header stat
+  const onlineCount = agents.filter(a => mapStatus(a.status) !== 'offline').length;
+  const onlineEl = document.getElementById('online-count');
+  if (onlineEl) onlineEl.textContent = onlineCount;
+}
+
+const STATUS_EMOJI = {
+  active: '🟢', working: '🟡', talking: '💬', thinking: '🤔',
+  reviewing: '🔍', deploying: '🚀', testing: '🧪', idle: '🟢',
+  sleeping: '😴', waiting: '⏳', offline: '⚫',
+};
+
+function onStatusChange(data) {
+  // data can be a single event or array
+  const events = Array.isArray(data) ? data : [data];
+  events.forEach(e => {
+    if (!e || !e.agentId) return;
+    const fromEmoji = STATUS_EMOJI[e.from] || '⚪';
+    const toEmoji = STATUS_EMOJI[e.to] || '⚪';
+    addFeedItem('🔄', `<strong>${e.agentName || e.agentId}</strong>: ${fromEmoji} ${e.from} → ${toEmoji} ${e.to}`);
+
+    // Update tile status
+    const cssStatus = mapStatus(e.to);
+    const existing = AGENTS[e.agentId];
+    if (existing) existing.status = cssStatus;
+    const el = document.getElementById('agent-' + e.agentId);
+    if (el) {
+      el.className = `agent ${cssStatus}`;
+      const dot = el.querySelector('.status-dot');
+      if (dot) dot.className = `status-dot ${cssStatus}`;
+    }
+  });
+}
+
+function onEventsUpdate(events) {
+  if (!Array.isArray(events)) return;
+  // events are newest-first from BFF; show them in feed
+  [...events].reverse().forEach(e => {
+    if (!e || !e.type) return;
+    if (e.type === 'status_change') {
+      onStatusChange(e);
+    } else if (e.type === 'task_created') {
+      addFeedItem('📨', `<strong>${e.fromUser || '?'}</strong> → <strong>${e.agentName || e.agentId}</strong>: ${escHtml(e.message || '')} <span style="color:var(--text-muted)">[${e.taskId}]</span>`);
+    } else if (e.type === 'task_accepted') {
+      addFeedItem('✅', `<strong>${e.agentName || e.agentId}</strong> принял <strong>${e.taskId}</strong>`);
+    }
+  });
+}
+
+function onMetricsUpdate(m) {
+  if (!m) return;
+  // Update task-count in header if available
+  const taskEl = document.getElementById('task-count');
+  if (taskEl && m.github && typeof m.github.openPRs === 'number') {
+    taskEl.textContent = m.github.openPRs;
+  }
+  // Update online-count from metrics if not already updated by agents
+  const onlineEl = document.getElementById('online-count');
+  if (onlineEl && m.agents && typeof m.agents.active === 'number') {
+    onlineEl.textContent = m.agents.active;
+  }
 }
 
 // ─── TASK UI ──────────────────────────────────────────────────────────────────
@@ -1177,8 +1315,26 @@ addFeedItem('🤖', '<strong>Артём</strong>: спринт 12 начат —
 
 setTimeout(scheduleFeedEvent, 2000);
 
-// Connect WebSocket for real-time task updates
-connectWs();
+// Bootstrap agents + events from REST, then connect WS for real-time updates
+(async () => {
+  try {
+    const [agentsRes, eventsRes] = await Promise.all([
+      fetch(`${BFF_BASE}/agents`).catch(() => null),
+      fetch(`${BFF_BASE}/events`).catch(() => null),
+    ]);
+    if (agentsRes && agentsRes.ok) {
+      const data = await agentsRes.json();
+      onAgentsUpdate(Array.isArray(data) ? data : data.data || []);
+    }
+    if (eventsRes && eventsRes.ok) {
+      const events = await eventsRes.json();
+      onEventsUpdate(Array.isArray(events) ? events : []);
+    }
+  } catch (e) {
+    console.warn('[init] REST bootstrap failed:', e.message);
+  }
+  connectWs();
+})();
 </script>
 </body>
 </html>
