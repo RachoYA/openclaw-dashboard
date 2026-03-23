@@ -19,11 +19,11 @@ export function Heatmap() {
           position: "absolute",
           top: 12,
           right: 300,
-          background: "rgba(15,14,23,0.85)",
-          border: "1px solid #2a2a4a",
+          background: "var(--surface-frosted)",
+          border: "1px solid var(--surface-border)",
           borderRadius: "8px",
           padding: "4px 12px",
-          color: "#a7a9be",
+          color: "var(--text-secondary)",
           fontSize: "11px",
           cursor: "pointer",
         }}
@@ -49,22 +49,22 @@ export function Heatmap() {
   return (
     <div style={panelStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-        <span style={{ fontSize: "13px", fontWeight: 600, color: "#fffffe" }}>🔥 Agent Activity</span>
-        <button onClick={() => setIsOpen(false)} style={{ background: "none", border: "none", color: "#525272", cursor: "pointer", fontSize: "14px" }}>✕</button>
+        <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>🔥 Agent Activity</span>
+        <button onClick={() => setIsOpen(false)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "14px" }}>✕</button>
       </div>
 
       {agents.map((agent) => {
         const count = counts.get(agent.id) || 0;
         const pct = (count / maxCount) * 100;
-        const color = agentColors[agent.id] || "#a7a9be";
+        const color = agentColors[agent.id] || "var(--text-secondary)";
 
         return (
           <div key={agent.id} style={{ marginBottom: "6px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
-              <span style={{ color: "#a7a9be" }}>{agent.name}</span>
-              <span style={{ color: "#525272" }}>{count}</span>
+              <span style={{ color: "var(--text-secondary)" }}>{agent.name}</span>
+              <span style={{ color: "var(--text-muted)" }}>{count}</span>
             </div>
-            <div style={{ height: "6px", background: "#1a1a2e", borderRadius: "3px", overflow: "hidden" }}>
+            <div style={{ height: "6px", background: "var(--activity-bar-bg)", borderRadius: "3px", overflow: "hidden" }}>
               <div style={{
                 width: `${pct}%`,
                 height: "100%",
@@ -84,8 +84,8 @@ const panelStyle: React.CSSProperties = {
   position: "absolute",
   top: 12,
   right: 300,
-  background: "rgba(15, 14, 23, 0.95)",
-  border: "1px solid #2a2a4a",
+  background: "var(--surface)",
+  border: "1px solid var(--surface-border)",
   borderRadius: "12px",
   padding: "12px 16px",
   width: "220px",

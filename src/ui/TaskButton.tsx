@@ -16,7 +16,7 @@ export function TaskButton() {
         href={`${REPO_URL}/issues`}
         target="_blank"
         rel="noopener noreferrer"
-        style={{ ...buttonStyle, background: "#2a2a4a" }}
+        style={{ ...buttonStyle, background: "var(--surface-border)" }}
         title="Список задач"
       >
         📋 Задачи
@@ -41,7 +41,7 @@ const buttonStyle: React.CSSProperties = {
   padding: "6px 12px",
   fontSize: "12px",
   fontWeight: 600,
-  color: "#fffffe",
+  color: "var(--text)",
   background: "#7f5af0",
   border: "none",
   borderRadius: "8px",

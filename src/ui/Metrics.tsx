@@ -55,8 +55,8 @@ function MetricCard({ emoji, label, value, total, color, compact }: {
     }}>
       <span style={{ fontSize: compact ? "12px" : "14px" }}>{emoji}</span>
       <span style={{ fontSize: compact ? "13px" : "16px", fontWeight: 700, color }}>{value}</span>
-      {total !== undefined && <span style={{ fontSize: "9px", color: "#8e8ea0" }}>/{total}</span>}
-      <span style={{ fontSize: compact ? "8px" : "9px", color: "#8e8ea0" }}>{label}</span>
+      {total !== undefined && <span style={{ fontSize: "9px", color: "var(--text-muted)" }}>/{total}</span>}
+      <span style={{ fontSize: compact ? "8px" : "9px", color: "var(--text-muted)" }}>{label}</span>
     </div>
   );
 }
@@ -76,7 +76,7 @@ const mobileWrapperStyle: React.CSSProperties = {
   // Webkit: hide scrollbar track but keep scrollability
   // (msOverflowStyle not needed — Edge uses scrollbarWidth)
   WebkitOverflowScrolling: "touch",
-  background: "linear-gradient(to bottom, rgba(245,245,247,0.95) 80%, transparent)",
+  background: "var(--metrics-strip)",
   // Fade-out hint on the right edge to signal scrollability
   WebkitMaskImage:
     "linear-gradient(to right, black 0%, black calc(100% - 32px), transparent 100%)",
@@ -101,9 +101,9 @@ const cardStyle: React.CSSProperties = {
   flexDirection: "column",
   alignItems: "center",
   gap: "1px",
-  background: "rgba(255, 255, 255, 0.9)",
-  border: "1px solid #e5e5ea",
+  background: "var(--metrics-card-bg)",
+  border: "1px solid var(--metrics-card-border)",
   borderRadius: "10px",
   backdropFilter: "blur(10px)",
-  boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+  boxShadow: "0 1px 4px var(--shadow-sm)",
 };
