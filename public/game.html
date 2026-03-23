@@ -813,7 +813,7 @@ const BFF_BASE = (() => {
   return `${proto}//${location.hostname}:3101`;
 })();
 
-const WS_URL = BFF_BASE.replace(/^http/, 'ws').replace(/\/db$/, '') + '/ws';
+const WS_URL = BFF_BASE.replace(/^http/, 'ws') + '/ws';
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const AGENTS = {
