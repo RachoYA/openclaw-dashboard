@@ -8,6 +8,7 @@ import { Heatmap } from "./ui/Heatmap";
 import { TaskButton } from "./ui/TaskButton";
 import { ZoomControls } from "./ui/ZoomControls";
 import { ConnectionBadge } from "./ui/ConnectionBadge";
+import { BottomSheet } from "./ui/BottomSheet";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useAgentStore } from "./data/AgentStore";
 import { startWSClient, stopWSClient } from "./data/ws-client";
@@ -61,35 +62,40 @@ export function App() {
       />
       <ActivityFeed compact={isMobile} />
 
-      {/* Agent detail panel — slide-in from right (desktop) / bottom (mobile) */}
-      {selectedAgent && (
-        <>
-          {/* Backdrop */}
-          <div
-            onClick={handleClose}
-            style={{
-              position: "absolute", inset: 0, zIndex: 19,
-              background: panelOpen ? "rgba(0,0,0,0.2)" : "transparent",
-              pointerEvents: panelOpen ? "auto" : "none",
-              transition: "background 0.3s ease",
-            }}
-          />
-
-          {/* Panel */}
-          <div style={{
-            ...(isMobile ? mobileSheetStyle : desktopPanelStyle),
-            transform: panelOpen
-              ? "translate(0, 0)"
-              : isMobile ? "translateY(100%)" : "translateX(100%)",
-            transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-          }}>
-            <AgentPanel
-              agent={selectedAgent}
-              onClose={handleClose}
-              compact={isMobile}
+      {/* Agent detail panel */}
+      {isMobile ? (
+        /* Mobile: BottomSheet with drag-to-dismiss */
+        <BottomSheet
+          open={panelOpen && selectedAgent !== null}
+          onClose={handleClose}
+          label={selectedAgent ? `${selectedAgent.name}` : undefined}
+        >
+          {selectedAgent && (
+            <AgentPanel agent={selectedAgent} onClose={handleClose} compact />
+          )}
+        </BottomSheet>
+      ) : (
+        /* Desktop: slide-in from right */
+        selectedAgent && (
+          <>
+            <div
+              onClick={handleClose}
+              style={{
+                position: "absolute", inset: 0, zIndex: 19,
+                background: panelOpen ? "rgba(0,0,0,0.2)" : "transparent",
+                pointerEvents: panelOpen ? "auto" : "none",
+                transition: "background 0.3s ease",
+              }}
             />
-          </div>
-        </>
+            <div style={{
+              ...desktopPanelStyle,
+              transform: panelOpen ? "translateX(0)" : "translateX(100%)",
+              transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+            }}>
+              <AgentPanel agent={selectedAgent} onClose={handleClose} compact={false} />
+            </div>
+          </>
+        )
       )}
     </div>
   );
@@ -101,15 +107,4 @@ const desktopPanelStyle: React.CSSProperties = {
   right: 0,
   bottom: 0,
   zIndex: 20,
-};
-
-const mobileSheetStyle: React.CSSProperties = {
-  position: "absolute",
-  left: 0,
-  right: 0,
-  bottom: 0,
-  zIndex: 20,
-  borderTopLeftRadius: "16px",
-  borderTopRightRadius: "16px",
-  overflow: "hidden",
 };
