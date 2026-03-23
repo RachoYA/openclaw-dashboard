@@ -70,11 +70,18 @@ const mobileWrapperStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "row",
   gap: "6px",
-  padding: "4px 10px",
+  padding: "4px 10px 4px 10px",
   overflowX: "auto",
   scrollbarWidth: "none", // Firefox
+  // Webkit: hide scrollbar track but keep scrollability
+  // (msOverflowStyle not needed — Edge uses scrollbarWidth)
   WebkitOverflowScrolling: "touch",
   background: "linear-gradient(to bottom, rgba(245,245,247,0.95) 80%, transparent)",
+  // Fade-out hint on the right edge to signal scrollability
+  WebkitMaskImage:
+    "linear-gradient(to right, black 0%, black calc(100% - 32px), transparent 100%)",
+  maskImage:
+    "linear-gradient(to right, black 0%, black calc(100% - 32px), transparent 100%)",
 };
 
 const desktopStyle: React.CSSProperties = {
