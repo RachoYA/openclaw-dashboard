@@ -35,8 +35,8 @@ export function ActivityFeed() {
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 15,
-            background: "rgba(15, 14, 23, 0.92)",
-            border: "1px solid #2a2a4a",
+            background: "var(--surface-frosted)",
+            border: "1px solid var(--surface-border)",
             borderRadius: 24,
             padding: "8px 16px",
             display: "flex",
@@ -45,22 +45,22 @@ export function ActivityFeed() {
             cursor: "pointer",
             backdropFilter: "blur(12px)",
             minWidth: 160,
-            boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+            boxShadow: "0 4px 16px var(--shadow)",
           }}
         >
           <span style={{ fontSize: 14 }}>📡</span>
-          <span style={{ fontSize: 12, color: "#a7a9be", fontWeight: 600 }}>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>
             {events.length > 0 ? `${events.length} событий` : "Activity Feed"}
           </span>
           {preview.length > 0 && (
             <span style={{
-              fontSize: 9, color: "#525272",
+              fontSize: 9, color: "var(--text-muted)",
               maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
               {preview[0].text}
             </span>
           )}
-          <span style={{ fontSize: 12, color: "#525272", marginLeft: "auto" }}>↑</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: "auto" }}>↑</span>
         </div>
 
         {/* Bottom sheet */}
@@ -76,11 +76,11 @@ export function ActivityFeed() {
     <div style={desktopContainerStyle}>
       <div style={headerStyle}>
         <span>📡 Activity Feed</span>
-        <span style={{ fontSize: "10px", color: "#525272" }}>{events.length} events</span>
+        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{events.length} events</span>
       </div>
       <div style={listStyle} className="hide-scrollbar">
         {recent.length === 0 && (
-          <div style={{ color: "#525272", fontSize: "11px", padding: "8px" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "11px", padding: "8px" }}>
             Ожидание событий...
           </div>
         )}
@@ -96,7 +96,7 @@ function FeedList({ events }: { events: ActivityEvent[] }) {
   return (
     <div style={{ padding: "0 0 16px" }}>
       {events.length === 0 && (
-        <div style={{ color: "#525272", fontSize: "13px", padding: "24px 16px", textAlign: "center" }}>
+        <div style={{ color: "var(--text-muted)", fontSize: "13px", padding: "24px 16px", textAlign: "center" }}>
           Ожидание событий...
         </div>
       )}
@@ -116,12 +116,12 @@ function FeedItem({ event }: { event: ActivityEvent }) {
     <div style={itemStyle}>
       <span style={{ fontSize: "14px", flexShrink: 0 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: "12px", color: "#fffffe", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          <strong style={{ color: event.agentColor || "#a7a9be" }}>{event.agentName}</strong>{" "}
+        <div style={{ fontSize: "12px", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <strong style={{ color: event.agentColor || "var(--text-secondary)" }}>{event.agentName}</strong>{" "}
           {event.text}
         </div>
       </div>
-      <span style={{ fontSize: "9px", color: "#525272", flexShrink: 0 }}>{ageStr}</span>
+      <span style={{ fontSize: "9px", color: "var(--text-muted)", flexShrink: 0 }}>{ageStr}</span>
     </div>
   );
 }
@@ -131,8 +131,8 @@ const desktopContainerStyle: React.CSSProperties = {
   bottom: 0,
   left: 0,
   right: 0,
-  background: "rgba(15, 14, 23, 0.95)",
-  borderTop: "1px solid #2a2a4a",
+  background: "var(--surface)",
+  borderTop: "1px solid var(--surface-border)",
   maxHeight: "140px",
   overflow: "hidden",
   zIndex: 5,
@@ -146,8 +146,8 @@ const headerStyle: React.CSSProperties = {
   padding: "6px 12px",
   fontSize: "12px",
   fontWeight: 600,
-  color: "#a7a9be",
-  borderBottom: "1px solid #2a2a4a",
+  color: "var(--text-secondary)",
+  borderBottom: "1px solid var(--surface-border)",
 };
 
 const listStyle: React.CSSProperties = {
@@ -160,5 +160,5 @@ const itemStyle: React.CSSProperties = {
   alignItems: "center",
   gap: "8px",
   padding: "6px 12px",
-  borderBottom: "1px solid rgba(42, 42, 74, 0.5)",
+  borderBottom: "1px solid var(--divider)",
 };

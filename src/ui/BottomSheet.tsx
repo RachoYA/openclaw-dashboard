@@ -84,7 +84,7 @@ export function BottomSheet({ open, onClose, children, label }: BottomSheetProps
           position: "fixed",
           inset: 0,
           zIndex: 29,
-          background: open ? "rgba(0,0,0,0.35)" : "transparent",
+          background: open ? "var(--backdrop)" : "transparent",
           pointerEvents: open ? "auto" : "none",
           transition: "background 0.3s ease",
         }}
@@ -99,12 +99,12 @@ export function BottomSheet({ open, onClose, children, label }: BottomSheetProps
           right: 0,
           bottom: 0,
           zIndex: 30,
-          background: "rgba(15, 14, 23, 0.97)",
+          background: "var(--panel-bg)",
           borderTopLeftRadius: "20px",
           borderTopRightRadius: "20px",
           transform: open ? "translateY(0)" : "translateY(100%)",
           transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-          boxShadow: "0 -4px 24px rgba(0,0,0,0.4)",
+          boxShadow: "0 -4px 24px var(--shadow)",
           maxHeight: "80vh",
           overflow: "hidden",
           display: "flex",
@@ -129,10 +129,10 @@ export function BottomSheet({ open, onClose, children, label }: BottomSheetProps
           <div style={{
             width: 36, height: 4,
             borderRadius: 2,
-            background: "rgba(255,255,255,0.25)",
+            background: "var(--drag-handle)",
           }} />
           {label && (
-            <span style={{ fontSize: 12, color: "#a7a9be", fontWeight: 600, paddingTop: 2 }}>{label}</span>
+            <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, paddingTop: 2 }}>{label}</span>
           )}
         </div>
 

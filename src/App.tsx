@@ -10,6 +10,7 @@ import { ZoomControls } from "./ui/ZoomControls";
 import { ConnectionBadge } from "./ui/ConnectionBadge";
 import { BottomSheet } from "./ui/BottomSheet";
 import { useIsMobile } from "./hooks/useIsMobile";
+import { useThemeSync } from "./hooks/useTheme";
 import { useAgentStore } from "./data/AgentStore";
 import { startWSClient, stopWSClient } from "./data/ws-client";
 
@@ -23,6 +24,9 @@ export function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const isMobile = useIsMobile();
   const sceneRef = useRef<SceneHandle | null>(null);
+
+  // Sync theme with OS prefers-color-scheme — sets data-theme on <html>
+  useThemeSync();
 
   useEffect(() => {
     startWSClient();
@@ -42,7 +46,7 @@ export function App() {
   const selectedAgent = selectedId ? agents.find((a) => a.id === selectedId) ?? null : null;
 
   return (
-    <div style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "#0f0e17" }}>
+    <div style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "var(--bg1)" }}>
       {/* Fullscreen canvas */}
       <Scene
         agents={agents}

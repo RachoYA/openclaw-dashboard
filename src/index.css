@@ -1,6 +1,50 @@
 /* Global styles for openclaw-dashboard */
 
-/* Hide scrollbar visually but keep functionality (cross-browser) */
+/* ─── CSS Custom Properties (theme tokens) ─────────────────────────────── */
+
+[data-theme="dark"] {
+  --bg1: #0f0e17;
+  --bg2: #1a1a2e;
+  --surface: rgba(15, 14, 23, 0.95);
+  --surface-frosted: rgba(15, 14, 23, 0.92);
+  --surface-border: #2a2a4a;
+  --text: #fffffe;
+  --text-secondary: #a7a9be;
+  --text-muted: #525272;
+  --shadow: rgba(0, 0, 0, 0.4);
+  --shadow-sm: rgba(0, 0, 0, 0.25);
+  --backdrop: rgba(0, 0, 0, 0.35);
+  --panel-bg: rgba(15, 14, 23, 0.97);
+  --drag-handle: rgba(255, 255, 255, 0.25);
+  --metrics-strip: linear-gradient(to bottom, rgba(15, 14, 23, 0.9) 80%, transparent);
+  --metrics-card-bg: rgba(255, 255, 255, 0.06);
+  --metrics-card-border: rgba(255, 255, 255, 0.1);
+  --divider: rgba(42, 42, 74, 0.5);
+  --activity-bar-bg: #1a1a2e;
+}
+
+[data-theme="light"] {
+  --bg1: #f5f5f7;
+  --bg2: #e8e8ed;
+  --surface: rgba(255, 255, 255, 0.95);
+  --surface-frosted: rgba(255, 255, 255, 0.92);
+  --surface-border: #d1d1d6;
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-muted: #aeaeb2;
+  --shadow: rgba(0, 0, 0, 0.12);
+  --shadow-sm: rgba(0, 0, 0, 0.06);
+  --backdrop: rgba(0, 0, 0, 0.25);
+  --panel-bg: rgba(255, 255, 255, 0.97);
+  --drag-handle: rgba(0, 0, 0, 0.15);
+  --metrics-strip: linear-gradient(to bottom, rgba(245, 245, 247, 0.95) 80%, transparent);
+  --metrics-card-bg: rgba(255, 255, 255, 0.9);
+  --metrics-card-border: #e5e5ea;
+  --divider: rgba(229, 229, 234, 0.8);
+  --activity-bar-bg: #e8e8ed;
+}
+
+/* ─── Utility: hide scrollbar (show content, hide track) ────────────────── */
 .hide-scrollbar {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE 10+ */
