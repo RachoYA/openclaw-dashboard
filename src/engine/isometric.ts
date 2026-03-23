@@ -1,8 +1,9 @@
 /**
- * Isometric coordinate helpers.
+ * @deprecated Isometric projection — superseded by orthographic.ts (top-down).
+ * This file is kept for reference during the iso→ortho migration (PR-A / issue #69).
+ * DO NOT import from this file in new code — use orthographic.ts instead.
  *
- * Tile (col, row) → screen (x, y) and back.
- * Uses a standard 2:1 diamond projection.
+ * Original: Tile (col, row) → screen (x, y) using standard 2:1 diamond projection.
  */
 
 export const TILE_WIDTH = 64;

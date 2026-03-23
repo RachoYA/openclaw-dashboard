@@ -2,7 +2,7 @@
  * Animated message particles — envelopes/emoji flying between agents.
  */
 
-import { tileToScreen } from "./isometric";
+import { tileToScreen } from "./orthographic";
 
 export interface MessageParticle {
   id: string;

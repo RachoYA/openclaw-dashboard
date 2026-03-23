@@ -3,7 +3,7 @@
  * Based on Lena's design: docs/office-zones-design.md
  */
 
-import { tileToScreen } from "./isometric";
+import { tileToScreen } from "./orthographic";
 
 export interface OfficeZone {
   id: string;
@@ -123,7 +123,7 @@ export function getZoneAt(col: number, row: number): OfficeZone | null {
   return null;
 }
 
-/** Draw zone label at the center of a zone */
+/** Draw zone label at the center of a zone (top-down: pixel center of tile rect) */
 export function drawZoneLabel(
   ctx: CanvasRenderingContext2D,
   zone: OfficeZone,
@@ -131,6 +131,7 @@ export function drawZoneLabel(
   offsetY: number,
   isSelected: boolean,
 ) {
+  // Top-down: zone center is midpoint of bounding rect in pixel space
   const centerCol = (zone.col1 + zone.col2) / 2;
   const centerRow = (zone.row1 + zone.row2) / 2;
   const { x, y } = tileToScreen(centerCol, centerRow);
