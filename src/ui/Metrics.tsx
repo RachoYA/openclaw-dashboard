@@ -11,19 +11,29 @@ export function Metrics() {
   const sleeping = agents.filter((a) => a.status === "sleeping").length;
   const gh = metrics?.github;
 
+  if (isMobile) {
+    // Horizontal scrollable pill strip on mobile
+    return (
+      <div style={mobileWrapperStyle}>
+        <MetricCard emoji="👥" label="Active" value={active} total={agents.length} color="#34c759" compact />
+        {sleeping > 0 && <MetricCard emoji="💤" label="Sleep" value={sleeping} color="#636366" compact />}
+        <MetricCard emoji="🔀" label="PRs" value={gh?.openPRs ?? 0} color="#af52de" compact />
+        <MetricCard emoji="🐛" label="Bugs" value={gh?.openIssues ?? 0} color="#ff3b30" compact />
+        <MetricCard emoji="📝" label="Commits" value={gh?.commits24h ?? 0} color="#007aff" compact />
+        <MetricCard emoji="✅" label="Merged" value={gh?.mergedPRs24h ?? 0} color="#5856d6" compact />
+      </div>
+    );
+  }
+
+  // Desktop: positioned overlay
   return (
-    <div style={{
-      ...containerStyle,
-      top: isMobile ? 50 : 60,
-      left: isMobile ? 8 : 12,
-      gap: isMobile ? "3px" : "4px",
-    }}>
-      <MetricCard emoji="👥" label="Active" value={active} total={agents.length} color="#34c759" compact={isMobile} />
-      {sleeping > 0 && <MetricCard emoji="💤" label="Sleep" value={sleeping} color="#636366" compact={isMobile} />}
-      <MetricCard emoji="🔀" label="PRs" value={gh?.openPRs ?? 0} color="#af52de" compact={isMobile} />
-      <MetricCard emoji="🐛" label="Bugs" value={gh?.openIssues ?? 0} color="#ff3b30" compact={isMobile} />
-      <MetricCard emoji="📝" label="Commits" value={gh?.commits24h ?? 0} color="#007aff" compact={isMobile} />
-      {!isMobile && <MetricCard emoji="🔀" label="Merged" value={gh?.mergedPRs24h ?? 0} color="#5856d6" />}
+    <div style={desktopStyle}>
+      <MetricCard emoji="👥" label="Active" value={active} total={agents.length} color="#34c759" />
+      {sleeping > 0 && <MetricCard emoji="💤" label="Sleep" value={sleeping} color="#636366" />}
+      <MetricCard emoji="🔀" label="PRs" value={gh?.openPRs ?? 0} color="#af52de" />
+      <MetricCard emoji="🐛" label="Bugs" value={gh?.openIssues ?? 0} color="#ff3b30" />
+      <MetricCard emoji="📝" label="Commits" value={gh?.commits24h ?? 0} color="#007aff" />
+      <MetricCard emoji="✅" label="Merged" value={gh?.mergedPRs24h ?? 0} color="#5856d6" />
     </div>
   );
 }
@@ -39,8 +49,9 @@ function MetricCard({ emoji, label, value, total, color, compact }: {
   return (
     <div style={{
       ...cardStyle,
-      padding: compact ? "3px 6px" : "5px 10px",
-      minWidth: compact ? "38px" : "48px",
+      padding: compact ? "4px 8px" : "5px 10px",
+      minWidth: compact ? "40px" : "48px",
+      flexShrink: 0,
     }}>
       <span style={{ fontSize: compact ? "12px" : "14px" }}>{emoji}</span>
       <span style={{ fontSize: compact ? "13px" : "16px", fontWeight: 700, color }}>{value}</span>
@@ -50,11 +61,30 @@ function MetricCard({ emoji, label, value, total, color, compact }: {
   );
 }
 
-const containerStyle: React.CSSProperties = {
+const mobileWrapperStyle: React.CSSProperties = {
   position: "absolute",
+  top: 48,
+  left: 0,
+  right: 0,
+  zIndex: 10,
+  display: "flex",
+  flexDirection: "row",
+  gap: "6px",
+  padding: "4px 10px",
+  overflowX: "auto",
+  scrollbarWidth: "none", // Firefox
+  WebkitOverflowScrolling: "touch",
+  background: "linear-gradient(to bottom, rgba(245,245,247,0.95) 80%, transparent)",
+};
+
+const desktopStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 60,
+  left: 12,
   display: "flex",
   flexDirection: "row",
   flexWrap: "wrap",
+  gap: "4px",
   maxWidth: "calc(100vw - 24px)",
   zIndex: 10,
 };
