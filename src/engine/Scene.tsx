@@ -171,109 +171,136 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       }
     }
 
-    // Zone labels + furniture
+    // Zone labels (floor level — drawn before any sprites)
     for (const zone of OFFICE_ZONES) drawZoneLabel(ctx, zone, offsetX, offsetY, selZone === zone.id);
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
+
+    // --- Unified depth-sorted render: furniture + desks + agents ---
+    // Collect all drawables with isometric sort key (tileY * GRID_COLS + tileX)
+    type Drawable = { sortKey: number; draw: () => void };
+    const drawables: Drawable[] = [];
+
+    // Furniture items
     for (const zone of OFFICE_ZONES) {
+      const dimmed = !!(selZone && selZone !== zone.id);
       for (const item of zone.furniture) {
-        const { x, y } = tileToScreen(item.col, item.row);
-        ctx.globalAlpha = selZone && selZone !== zone.id ? 0.3 : 0.8;
-        if (!drawFurniture(ctx, item.emoji, x + offsetX, y + offsetY)) {
-          ctx.font = "16px serif";
-          ctx.fillText(item.emoji, x + offsetX, y + offsetY - 8);
-        }
+        const col = item.col, row = item.row, emoji = item.emoji;
+        drawables.push({
+          sortKey: row * GRID_COLS + col,
+          draw: () => {
+            const { x, y } = tileToScreen(col, row);
+            ctx.globalAlpha = dimmed ? 0.3 : 0.8;
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            if (!drawFurniture(ctx, emoji, x + offsetX, y + offsetY)) {
+              ctx.font = "16px serif";
+              ctx.fillText(emoji, x + offsetX, y + offsetY - 8);
+            }
+            ctx.globalAlpha = 1;
+          },
+        });
       }
     }
-    ctx.globalAlpha = 1;
 
-    // --- Desks ---
-    for (const agent of currentAgents) {
-      const { x, y } = tileToScreen(agent.tileX, agent.tileY);
-      const sx = x + offsetX, sy = y + offsetY;
-      if (selZone && getZoneAt(agent.tileX, agent.tileY)?.id !== selZone) ctx.globalAlpha = 0.25;
-      ctx.fillStyle = "#3d2b1f";
-      ctx.beginPath();
-      ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 16, sy + 4);
-      ctx.lineTo(sx, sy + 12); ctx.lineTo(sx - 16, sy + 4);
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "#5c4033"; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = "#0f0e17"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
-      ctx.fillStyle = "#2cb67d"; ctx.fillRect(sx - 4, sy - 11, 8, 6);
-      ctx.globalAlpha = 1;
-    }
-
-    // --- Agents (depth sorted) ---
+    // Desks + agents (paired so desk is always under its agent)
     const sorted = [...currentAgents].sort((a, b) => a.tileY - b.tileY || a.tileX - b.tileX);
     for (const agent of sorted) {
-      const { x, y } = tileToScreen(agent.tileX, agent.tileY);
-      const sx = x + offsetX, sy = y + offsetY;
-      if (selZone && getZoneAt(agent.tileX, agent.tileY)?.id !== selZone) ctx.globalAlpha = 0.2;
-      const isActive = agent.status !== "idle" && agent.status !== "sleeping";
-      const bob = Math.sin(t * (isActive ? 0.004 : 0.002) + agent.tileX * 2) * (isActive ? 3 : 1.5);
-      const breathe = Math.sin(t * 0.002 + agent.tileX * 1.5 + agent.tileY) * 2;
-      const agentY = sy - SPRITE_H - 4 + bob + breathe;
-      if (phase === "night" && agent.status === "sleeping") ctx.globalAlpha = Math.min(ctx.globalAlpha, 0.4);
+      const agentSnap = { ...agent }; // capture for closure
+      // Desk drawable (sort at tile center)
+      drawables.push({
+        sortKey: agentSnap.tileY * GRID_COLS + agentSnap.tileX - 0.5, // desk just before agent
+        draw: () => {
+          const { x, y } = tileToScreen(agentSnap.tileX, agentSnap.tileY);
+          const sx = x + offsetX, sy = y + offsetY;
+          if (selZone && getZoneAt(agentSnap.tileX, agentSnap.tileY)?.id !== selZone) ctx.globalAlpha = 0.25;
+          ctx.fillStyle = "#3d2b1f";
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 16, sy + 4);
+          ctx.lineTo(sx, sy + 12); ctx.lineTo(sx - 16, sy + 4);
+          ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = "#5c4033"; ctx.lineWidth = 1; ctx.stroke();
+          ctx.fillStyle = "#0f0e17"; ctx.fillRect(sx - 5, sy - 12, 10, 8);
+          ctx.fillStyle = "#2cb67d"; ctx.fillRect(sx - 4, sy - 11, 8, 6);
+          ctx.globalAlpha = 1;
+        },
+      });
+      // Agent drawable
+      drawables.push({
+        sortKey: agentSnap.tileY * GRID_COLS + agentSnap.tileX,
+        draw: () => {
+          const { x, y } = tileToScreen(agentSnap.tileX, agentSnap.tileY);
+          const sx = x + offsetX, sy = y + offsetY;
+          if (selZone && getZoneAt(agentSnap.tileX, agentSnap.tileY)?.id !== selZone) ctx.globalAlpha = 0.2;
+          const isActive = agentSnap.status !== "idle" && agentSnap.status !== "sleeping";
+          const bob = Math.sin(t * (isActive ? 0.004 : 0.002) + agentSnap.tileX * 2) * (isActive ? 3 : 1.5);
+          const breathe = Math.sin(t * 0.002 + agentSnap.tileX * 1.5 + agentSnap.tileY) * 2;
+          const agentY = sy - SPRITE_H - 4 + bob + breathe;
+          if (phase === "night" && agentSnap.status === "sleeping") ctx.globalAlpha = Math.min(ctx.globalAlpha, 0.4);
 
-      // Shadow
-      ctx.beginPath(); ctx.ellipse(sx, sy + 2, 16, 6, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fill();
+          // Shadow
+          ctx.beginPath(); ctx.ellipse(sx, sy + 2, 16, 6, 0, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fill();
 
-      // Sprite — HD PNG with graceful fallback to colored rectangle
-      const drewPng = drawAgentSprite(ctx, agent.id, agent.status, sx, sy + 4, t, 1.0);
-      if (!drewPng) {
-        // Minimal fallback: colored silhouette
-        ctx.fillStyle = "#7f5af0";
-        ctx.fillRect(sx - 12, agentY + SPRITE_H - 24, 24, 24);
-      }
+          // Sprite — HD PNG with graceful fallback to colored rectangle
+          const drewPng = drawAgentSprite(ctx, agentSnap.id, agentSnap.status, sx, sy + 4, t, 1.0);
+          if (!drewPng) {
+            ctx.fillStyle = "#7f5af0";
+            ctx.fillRect(sx - 12, agentY + SPRITE_H - 24, 24, 24);
+          }
 
-      // Status dot + pulse
-      const color = STATUS_COLORS[agent.status] || "#a7a9be";
-      const dotX = sx + SPRITE_W * 0.6 - 2;
-      const dotY = agentY + 4;
-      ctx.beginPath(); ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
-      ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = "#0f0e17"; ctx.lineWidth = 1.5; ctx.stroke();
-      if (isActive) {
-        ctx.beginPath(); ctx.arc(dotX, dotY, 7, 0, Math.PI * 2);
-        ctx.strokeStyle = color; ctx.globalAlpha = Math.sin(t * 0.005) * 0.3 + 0.5;
-        ctx.lineWidth = 1.5; ctx.stroke();
-        ctx.globalAlpha = selZone ? (getZoneAt(agent.tileX, agent.tileY)?.id === selZone ? 1 : 0.2) : 1;
-      }
+          // Status dot + pulse
+          const color = STATUS_COLORS[agentSnap.status] || "#a7a9be";
+          const dotX = sx + SPRITE_W * 0.6 - 2;
+          const dotY = agentY + 4;
+          ctx.beginPath(); ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+          ctx.fillStyle = color; ctx.fill();
+          ctx.strokeStyle = "#0f0e17"; ctx.lineWidth = 1.5; ctx.stroke();
+          if (isActive) {
+            ctx.beginPath(); ctx.arc(dotX, dotY, 7, 0, Math.PI * 2);
+            ctx.strokeStyle = color; ctx.globalAlpha = Math.sin(t * 0.005) * 0.3 + 0.5;
+            ctx.lineWidth = 1.5; ctx.stroke();
+            ctx.globalAlpha = selZone ? (getZoneAt(agentSnap.tileX, agentSnap.tileY)?.id === selZone ? 1 : 0.2) : 1;
+          }
 
-      // Action icon or animation overlay
-      if (!drawActionIcon(ctx, agent.status, sx, agentY)) {
-        const anim = ANIMATIONS[agent.status];
-        if (anim) anim(ctx, sx, agentY, t);
-      }
-      drawStatusIcon(ctx, agent.status, sx + 30, sy + 10);
+          // Action icon or animation overlay
+          if (!drawActionIcon(ctx, agentSnap.status, sx, agentY)) {
+            const anim = ANIMATIONS[agentSnap.status];
+            if (anim) anim(ctx, sx, agentY, t);
+          }
+          drawStatusIcon(ctx, agentSnap.status, sx + 30, sy + 10);
 
-      // Name + role
-      ctx.font = "bold 11px -apple-system, sans-serif";
-      ctx.textAlign = "center"; ctx.fillStyle = "#fffffe";
-      ctx.fillText(agent.name, sx, sy + 16);
-      ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
-      ctx.fillText(agent.role, sx, sy + 27);
+          // Name + role
+          ctx.font = "bold 11px -apple-system, sans-serif";
+          ctx.textAlign = "center"; ctx.fillStyle = "#fffffe";
+          ctx.fillText(agentSnap.name, sx, sy + 16);
+          ctx.font = "9px -apple-system, sans-serif"; ctx.fillStyle = "#525272";
+          ctx.fillText(agentSnap.role, sx, sy + 27);
 
-      // Task bubble
-      if (agent.currentTask && isActive) {
-        const bubbleY = agentY - 16;
-        const text = agent.currentTask.length > 22 ? agent.currentTask.slice(0, 20) + "…" : agent.currentTask;
-        const tw = ctx.measureText(text).width;
-        const pad = 8;
-        const bubbleW = tw + pad * 2 + 10;
-        if (!drawSpeechBubble(ctx, sx, bubbleY + 5, bubbleW, 24)) {
-          ctx.fillStyle = "rgba(15,14,23,0.92)";
-          ctx.beginPath(); ctx.roundRect(sx - tw / 2 - pad, bubbleY - 9, tw + pad * 2, 18, 8); ctx.fill();
-          ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
-        }
-        ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#fffffe";
-        ctx.fillText(text, sx, bubbleY);
-        ctx.fillStyle = "rgba(15,14,23,0.92)";
-        ctx.beginPath(); ctx.moveTo(sx - 4, bubbleY + 9);
-        ctx.lineTo(sx + 4, bubbleY + 9); ctx.lineTo(sx, bubbleY + 14); ctx.closePath(); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
+          // Task bubble
+          if (agentSnap.currentTask && isActive) {
+            const bubbleY = agentY - 16;
+            const text = agentSnap.currentTask.length > 22 ? agentSnap.currentTask.slice(0, 20) + "…" : agentSnap.currentTask;
+            const tw = ctx.measureText(text).width;
+            const pad = 8;
+            const bubbleW = tw + pad * 2 + 10;
+            if (!drawSpeechBubble(ctx, sx, bubbleY + 5, bubbleW, 24)) {
+              ctx.fillStyle = "rgba(15,14,23,0.92)";
+              ctx.beginPath(); ctx.roundRect(sx - tw / 2 - pad, bubbleY - 9, tw + pad * 2, 18, 8); ctx.fill();
+              ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
+            }
+            ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#fffffe";
+            ctx.fillText(text, sx, bubbleY);
+            ctx.fillStyle = "rgba(15,14,23,0.92)";
+            ctx.beginPath(); ctx.moveTo(sx - 4, bubbleY + 9);
+            ctx.lineTo(sx + 4, bubbleY + 9); ctx.lineTo(sx, bubbleY + 14); ctx.closePath(); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        },
+      });
     }
+
+    // Execute all drawables in painter's order (back-to-front by isometric depth)
+    drawables.sort((a, b) => a.sortKey - b.sortKey);
+    for (const d of drawables) d.draw();
 
     // --- Connection lines ---
     const talking = currentAgents.filter((a) => a.status === "talking");
