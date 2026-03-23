@@ -132,8 +132,8 @@ export function drawZoneLabel(
   isSelected: boolean,
 ) {
   // Top-down: zone center is midpoint of bounding rect in pixel space
-  const centerCol = (zone.col1 + zone.col2 + 1) / 2;
-  const centerRow = (zone.row1 + zone.row2 + 1) / 2;
+  const centerCol = (zone.col1 + zone.col2) / 2;
+  const centerRow = (zone.row1 + zone.row2) / 2;
   const { x, y } = tileToScreen(centerCol, centerRow);
   const sx = x + offsetX;
   const sy = y + offsetY;
