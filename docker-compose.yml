@@ -49,6 +49,8 @@ services:
       REDIS_URL: redis://redis:6379
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPOS: ${GITHUB_REPOS:-RachoYA/ventMaind,RachoYA/openclaw-dashboard}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:--5102635917}
     volumes:
       # Mount host OpenClaw agents dir read-only.
       # Works with snap Docker since /home is an allowed bind-mount path.

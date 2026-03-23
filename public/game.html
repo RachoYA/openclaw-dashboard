@@ -396,7 +396,118 @@
   .btn.danger { border-color: #e9456044; color: var(--accent); }
   .btn.danger:hover { background: #e9456022; }
 
-  /* BOTTOM ACTIVITY FEED */
+  /* ── MESSAGING ─────────────────────────────────────────────────────────── */
+  .send-task-section {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .send-task-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  .task-input {
+    flex: 1;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 8px 12px;
+    resize: none;
+    min-height: 36px;
+    max-height: 80px;
+    line-height: 1.4;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  .task-input:focus { border-color: var(--blue); }
+  .task-input::placeholder { color: var(--text-muted); }
+  .send-btn {
+    background: var(--blue);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s, transform 0.1s;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .send-btn:hover { background: #2563eb; }
+  .send-btn:active { transform: scale(0.95); }
+  .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Task history list */
+  .task-history {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .task-item {
+    background: var(--panel2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 11px;
+    border-left: 3px solid var(--border);
+    transition: border-color 0.3s;
+  }
+  .task-item.pending  { border-left-color: var(--text-muted); }
+  .task-item.accepted { border-left-color: var(--green); }
+  .task-item.done     { border-left-color: var(--blue); }
+  .task-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+  }
+  .task-id { font-weight: 700; color: var(--blue); font-size: 10px; }
+  .task-status-badge {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .task-status-badge.pending  { background: #55555533; color: #999; }
+  .task-status-badge.accepted { background: #4ade8022; color: var(--green); }
+  .task-status-badge.done     { background: #3b82f622; color: var(--blue); }
+  .task-msg { color: var(--text); margin-bottom: 2px; line-height: 1.4; }
+  .task-time { color: var(--text-muted); font-size: 9px; }
+
+  /* accepted toast */
+  .toast {
+    position: fixed;
+    bottom: 140px;
+    right: 20px;
+    background: #16213e;
+    border: 1px solid var(--green);
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 13px;
+    max-width: 280px;
+    z-index: 100;
+    animation: toastIn 0.3s ease, toastOut 0.4s ease 3.5s forwards;
+    box-shadow: 0 4px 20px #0006;
+  }
+  .toast strong { color: var(--green); }
+  @keyframes toastIn  { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toastOut { from { opacity: 1; } to { opacity: 0; pointer-events: none; } }
+
+  /* ── BOTTOM ACTIVITY FEED ───────────────────────────────────────────────── */
   .activity-feed {
     height: 120px;
     background: var(--panel);
@@ -484,9 +595,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#e9456055"></div></div>
         </div>
-        <div class="agent active" id="agent-artem" data-id="artem"
+        <div class="agent active" id="agent-pm" data-id="pm"
              style="--glow-color:#4ade80; top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('artem')">
+             onclick="selectAgent('pm')">
           <div class="agent-circle" style="background:#4ade8022;">
             🤖
             <div class="status-dot active"></div>
@@ -508,9 +619,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#fbbf2455"></div></div>
         </div>
-        <div class="agent working" id="agent-lena" data-id="lena"
+        <div class="agent working" id="agent-analyst" data-id="analyst"
              style="--glow-color:#fbbf24; top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('lena')">
+             onclick="selectAgent('analyst')">
           <div class="agent-circle" style="background:#fbbf2422;">
             📊
             <div class="status-dot working"></div>
@@ -526,9 +637,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#3b82f655"></div></div>
         </div>
-        <div class="agent active" id="agent-kolya" data-id="kolya"
+        <div class="agent active" id="agent-dev" data-id="dev"
              style="--glow-color:#4ade80; top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('kolya')">
+             onclick="selectAgent('dev')">
           <div class="agent-circle" style="background:#4ade8022;">
             💻
             <div class="status-dot active"></div>
@@ -550,9 +661,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
         </div>
-        <div class="agent offline" id="agent-sasha" data-id="sasha"
+        <div class="agent offline" id="agent-qa" data-id="qa"
              style="top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('sasha')">
+             onclick="selectAgent('qa')">
           <div class="agent-circle" style="background:#55555522;">
             🔍
             <div class="status-dot offline"></div>
@@ -568,9 +679,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
         </div>
-        <div class="agent offline" id="agent-max" data-id="max"
+        <div class="agent offline" id="agent-techlead" data-id="techlead"
              style="top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('max')">
+             onclick="selectAgent('techlead')">
           <div class="agent-circle" style="background:#55555522;">
             ⚙️
             <div class="status-dot offline"></div>
@@ -592,9 +703,9 @@
         <div class="desk">
           <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
         </div>
-        <div class="agent offline" id="agent-dima" data-id="dima"
+        <div class="agent offline" id="agent-devops" data-id="devops"
              style="top:14px; left:50%; transform:translateX(-50%);"
-             onclick="selectAgent('dima')">
+             onclick="selectAgent('devops')">
           <div class="agent-circle" style="background:#55555522;">
             🛠️
             <div class="status-dot offline"></div>
@@ -657,6 +768,27 @@
       <button class="btn" onclick="actionBtn('restart')">🔄 Restart</button>
       <button class="btn danger" onclick="actionBtn('logs')">📋 Логи</button>
     </div>
+
+    <!-- SEND TASK -->
+    <div class="send-task-section">
+      <div class="section-title" style="margin-bottom:8px;">💬 Отправить задачу</div>
+      <div class="send-task-row">
+        <textarea id="task-input" class="task-input" rows="2"
+          placeholder="Опишите задачу для агента…"
+          onkeydown="handleTaskKey(event)"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendTask()">
+          ➤ Отправить
+        </button>
+      </div>
+    </div>
+
+    <!-- TASK HISTORY -->
+    <div class="task-history">
+      <div class="section-title" style="margin-bottom:8px;">📋 История задач</div>
+      <div class="task-list" id="task-list">
+        <div style="color:var(--text-muted);font-size:11px;">Нет задач</div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -671,42 +803,54 @@
 </div>
 
 <script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const BFF_BASE = (() => {
+  // Prefer env-injected VITE var; fallback to same-origin /db or localhost:3101
+  if (typeof __BFF_URL__ !== 'undefined') return __BFF_URL__;
+  const proto = location.protocol === 'https:' ? 'https:' : 'http:';
+  // If served via nginx proxy (e.g. /db/ws), BFF is on same origin at /db
+  if (location.pathname.startsWith('/db')) return `${proto}//${location.host}/db`;
+  return `${proto}//${location.hostname}:3101`;
+})();
+
+const WS_URL = BFF_BASE.replace(/^http/, 'ws') + '/ws';
+
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const AGENTS = {
-  artem: {
+  pm: {
     name: 'Артём', role: 'PM', emoji: '🤖', status: 'active',
     tasks: 12, uptime: '6ч 14м',
     currentTask: 'Планирование спринта 12 — распределение задач по команде',
     progress: 78,
     focus: 85, load: 60,
   },
-  lena: {
+  analyst: {
     name: 'Лена', role: 'Analyst', emoji: '📊', status: 'working',
     tasks: 8, uptime: '5ч 42м',
     currentTask: 'Анализ UX-метрик дашборда — подготовка отчёта',
     progress: 45,
     focus: 70, load: 80,
   },
-  kolya: {
+  dev: {
     name: 'Коля', role: 'Dev', emoji: '💻', status: 'active',
     tasks: 21, uptime: '7ч 03м',
     currentTask: 'Рефакторинг Scene.tsx — переход на top-down renderer',
     progress: 62,
     focus: 90, load: 75,
   },
-  sasha: {
+  qa: {
     name: 'Саша', role: 'QA', emoji: '🔍', status: 'offline',
     tasks: 5, uptime: '0ч',
     currentTask: null, progress: 0,
     focus: 0, load: 0,
   },
-  max: {
+  techlead: {
     name: 'Макс', role: 'TechLead', emoji: '⚙️', status: 'offline',
     tasks: 9, uptime: '0ч',
     currentTask: null, progress: 0,
     focus: 0, load: 0,
   },
-  dima: {
+  devops: {
     name: 'Дима', role: 'DevOps', emoji: '🛠️', status: 'offline',
     tasks: 4, uptime: '0ч',
     currentTask: null, progress: 0,
@@ -734,6 +878,177 @@ const FEED_EVENTS = [
 let selectedAgent = null;
 let eventIndex = 0;
 let totalEvents = 0;
+
+// ─── TASK STATE ───────────────────────────────────────────────────────────────
+// agentId → Task[] (local mirror of BFF state)
+const agentTaskHistory = {};
+
+// ─── WEBSOCKET ────────────────────────────────────────────────────────────────
+let ws = null;
+let wsRetryTimer = null;
+
+function connectWs() {
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch (e) {
+    scheduleWsReconnect();
+    return;
+  }
+
+  ws.onopen = () => {
+    console.log('[WS] connected to', WS_URL);
+    clearTimeout(wsRetryTimer);
+  };
+
+  ws.onmessage = (evt) => {
+    let msg;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+
+    if (msg.type === 'task_created') {
+      onTaskCreated(msg.data);
+    } else if (msg.type === 'task_accepted') {
+      onTaskAccepted(msg.data);
+    }
+    // agents / events / metrics updates can be handled here in future
+  };
+
+  ws.onclose = () => scheduleWsReconnect();
+  ws.onerror = () => ws.close();
+}
+
+function scheduleWsReconnect() {
+  clearTimeout(wsRetryTimer);
+  wsRetryTimer = setTimeout(connectWs, 4000);
+}
+
+function onTaskCreated(task) {
+  // Add to local history
+  if (!agentTaskHistory[task.agentId]) agentTaskHistory[task.agentId] = [];
+  agentTaskHistory[task.agentId].unshift(task);
+  if (agentTaskHistory[task.agentId].length > 10) agentTaskHistory[task.agentId].length = 10;
+
+  // Update panel if open for this agent
+  if (selectedAgent === task.agentId) renderTaskList(task.agentId);
+
+  addFeedItem('📨', `<strong>${task.fromUser}</strong> → <strong>${task.agentName}</strong>: ${task.message} <span style="color:var(--text-muted)">[${task.id}]</span>`);
+}
+
+function onTaskAccepted(task) {
+  // Update status in local history
+  const list = agentTaskHistory[task.agentId] || [];
+  const idx = list.findIndex(t => t.id === task.id);
+  if (idx !== -1) list[idx] = task;
+
+  if (selectedAgent === task.agentId) renderTaskList(task.agentId);
+
+  addFeedItem('✅', `<strong>${task.agentName}</strong> принял <strong>${task.id}</strong>`);
+  showToast(`✅ <strong>${task.agentName}</strong> принял <strong>${task.id}</strong>`);
+}
+
+function showToast(html) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = html;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4200);
+}
+
+// ─── TASK UI ──────────────────────────────────────────────────────────────────
+
+function handleTaskKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendTask();
+  }
+}
+
+async function sendTask() {
+  if (!selectedAgent) return;
+  const input = document.getElementById('task-input');
+  const btn = document.getElementById('send-btn');
+  const message = input.value.trim();
+  if (!message) return;
+
+  btn.disabled = true;
+  input.disabled = true;
+
+  try {
+    const res = await fetch(`${BFF_BASE}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: selectedAgent, message, fromUser: 'Пользователь' }),
+    });
+
+    if (res.ok) {
+      const task = await res.json();
+      input.value = '';
+      // onTaskCreated will fire via WS; if WS is offline, mirror locally
+      if (!ws || ws.readyState !== WebSocket.OPEN) onTaskCreated(task);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      addFeedItem('⚠️', `Ошибка отправки: ${err.error || res.statusText}`);
+    }
+  } catch (e) {
+    // BFF offline — show locally without T-number
+    const localTask = {
+      id: `T-???`,
+      agentId: selectedAgent,
+      agentName: AGENTS[selectedAgent]?.name || selectedAgent,
+      message,
+      fromUser: 'Пользователь',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      acceptedAt: null,
+    };
+    onTaskCreated(localTask);
+    input.value = '';
+    addFeedItem('⚠️', 'BFF недоступен — задача сохранена локально');
+  } finally {
+    btn.disabled = false;
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+function renderTaskList(agentId) {
+  const list = document.getElementById('task-list');
+  const tasks = agentTaskHistory[agentId] || [];
+
+  if (tasks.length === 0) {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:11px;">Нет задач</div>';
+    return;
+  }
+
+  list.innerHTML = tasks.map(t => {
+    const dt = new Date(t.createdAt);
+    const timeStr = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const statusLabel = { pending: '⏳ Ожидает', accepted: '✅ Принята', done: '🏁 Готово' }[t.status] || t.status;
+    return `
+      <div class="task-item ${t.status}">
+        <div class="task-item-header">
+          <span class="task-id">${t.id}</span>
+          <span class="task-status-badge ${t.status}">${statusLabel}</span>
+        </div>
+        <div class="task-msg">${escHtml(t.message)}</div>
+        <div class="task-time">${timeStr} · от ${escHtml(t.fromUser)}</div>
+      </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function loadTaskHistory(agentId) {
+  try {
+    const res = await fetch(`${BFF_BASE}/tasks/${encodeURIComponent(agentId)}`);
+    if (res.ok) {
+      const tasks = await res.json();
+      agentTaskHistory[agentId] = tasks;
+    }
+  } catch {}
+  renderTaskList(agentId);
+}
 
 // ─── CLOCK ───────────────────────────────────────────────────────────────────
 function updateClock() {
@@ -788,6 +1103,13 @@ function selectAgent(id) {
   document.getElementById('p-focus-val').textContent = a.focus + '%';
   document.getElementById('p-load').style.width = a.load + '%';
   document.getElementById('p-load-val').textContent = a.load + '%';
+
+  // Clear task input, load history
+  const taskInput = document.getElementById('task-input');
+  if (taskInput) { taskInput.value = ''; taskInput.disabled = false; }
+  const sendBtn = document.getElementById('send-btn');
+  if (sendBtn) sendBtn.disabled = false;
+  loadTaskHistory(id);
 }
 
 function closePanel() {
@@ -833,7 +1155,7 @@ function scheduleFeedEvent() {
   addFeedItem(ev.emoji, ev.msg);
 
   // also randomly update a live agent's progress
-  const liveAgents = ['artem', 'lena', 'kolya'];
+  const liveAgents = ['pm', 'analyst', 'dev'];
   const rid = liveAgents[Math.floor(Math.random() * liveAgents.length)];
   const ra = AGENTS[rid];
   if (ra.progress < 100) {
@@ -854,6 +1176,9 @@ addFeedItem('🏭', '<strong>Фабрика</strong>: дашборд запущ�
 addFeedItem('🤖', '<strong>Артём</strong>: спринт 12 начат — задачи распределены');
 
 setTimeout(scheduleFeedEvent, 2000);
+
+// Connect WebSocket for real-time task updates
+connectWs();
 </script>
 </body>
 </html>
