@@ -33,7 +33,7 @@ services:
       retries: 3
     command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
 
-  # BFF service — polls OpenClaw, publishes to Redis, serves WebSocket
+  # BFF service — reads OpenClaw data files, publishes to Redis, serves WebSocket
   bff:
     build:
       context: ./bff
@@ -44,8 +44,15 @@ services:
     environment:
       PORT: 3101
       POLL_INTERVAL: ${POLL_INTERVAL:-10000}
-      OPENCLAW_BIN: ${OPENCLAW_BIN:-openclaw}
+      # Path inside container where OpenClaw agents dir is mounted
+      OPENCLAW_DATA_DIR: /openclaw-data/agents
       REDIS_URL: redis://redis:6379
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPOS: ${GITHUB_REPOS:-RachoYA/ventMaind,RachoYA/openclaw-dashboard}
+    volumes:
+      # Mount host OpenClaw agents dir read-only.
+      # Works with snap Docker since /home is an allowed bind-mount path.
+      - /home/racho/.openclaw/agents:/openclaw-data/agents:ro
     depends_on:
       redis:
         condition: service_healthy

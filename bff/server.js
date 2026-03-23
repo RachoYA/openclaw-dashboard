@@ -1,27 +1,25 @@
 /**
  * BFF (Backend-for-Frontend) for OpenClaw Agent Dashboard.
  *
- * Polls `openclaw` CLI for agent/session status, caches in Redis,
- * publishes updates via Redis pub/sub, and serves WebSocket to dashboard.
+ * Reads agent/session state directly from OpenClaw data files (no binary required).
+ * Caches in Redis, publishes updates via Redis pub/sub, serves WebSocket to dashboard.
  *
  * Env:
- *   PORT          — HTTP + WebSocket server port (default 3101)
- *   POLL_INTERVAL — ms between status polls (default 10000)
- *   OPENCLAW_BIN  — path to openclaw binary (default "openclaw")
- *   REDIS_URL     — Redis connection URL (default "redis://localhost:6379")
+ *   PORT              — HTTP + WebSocket server port (default 3101)
+ *   POLL_INTERVAL     — ms between status polls (default 10000)
+ *   OPENCLAW_DATA_DIR — path to openclaw agents dir (default /openclaw-data/agents)
+ *   REDIS_URL         — Redis connection URL (default "redis://localhost:6379")
  */
 
 import { WebSocketServer } from "ws";
 import { createClient } from "redis";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { createServer } from "node:http";
-
-const exec = promisify(execFile);
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 
 const PORT = parseInt(process.env.PORT || "3101", 10);
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || "10000", 10);
-const OPENCLAW_BIN = process.env.OPENCLAW_BIN || "openclaw";
+const OPENCLAW_DATA_DIR = process.env.OPENCLAW_DATA_DIR || "/openclaw-data/agents";
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
 const GITHUB_REPOS = (process.env.GITHUB_REPOS || "RachoYA/ventMaind,RachoYA/openclaw-dashboard").split(",");
@@ -91,109 +89,49 @@ async function setupRedis() {
 }
 
 // ---------------------------------------------------------------------------
-// OpenClaw polling
+// OpenClaw data reading — direct file access, no binary required
 // ---------------------------------------------------------------------------
 
-async function getOpenClawStatus() {
-  try {
-    const { stdout } = await exec(OPENCLAW_BIN, ["status"], {
-      timeout: 15000,
-      env: { ...process.env, NO_COLOR: "1" },
-    });
-    return stdout;
-  } catch (err) {
-    console.error("Failed to get openclaw status:", err.message);
-    return null;
-  }
-}
-
 /**
- * Get sessions via `openclaw sessions list`.
- * Tries --json first, falls back to text parsing.
- * Also attempts `openclaw sessions history` for recent messages.
+ * Read sessions.json for every agent in OPENCLAW_DATA_DIR.
+ * Returns flat array of session entries with agentId + lastMessageAge.
  */
-/**
- * Parse sessions directly from `openclaw status` output.
- * This is more reliable than `openclaw sessions list` which only shows
- * the current agent's sessions and doesn't support --json.
- *
- * Status output contains lines like:
- *   │ agent:dev:telegram:group:-51026…  │ group  │ 1m ago  │ claude-opus-4-6 │ ...
- *   │ agent:pm:main                     │ direct │ 35m ago │ claude-opus-4-6 │ ...
- */
-function parseSessionsFromStatus(statusText) {
-  if (!statusText) return [];
+async function readAgentSessions() {
   const sessions = [];
-  for (const line of statusText.split("\n")) {
-    // Match session lines: │ agent:<id>:...  │ ... │ <age> ago │
-    const match = line.match(/agent:(\w+):[^\s│]+/);
-    if (!match) continue;
-
-    const agentId = match[1];
-
-    // Parse age: "1m ago", "3h ago", "35m ago", "23h ago"
-    const ageMatch = line.match(/(\d+)([smh])\s*ago/);
-    let lastMessageAge = 9999;
-    if (ageMatch) {
-      const val = parseInt(ageMatch[1], 10);
-      const unit = ageMatch[2];
-      lastMessageAge = unit === "h" ? val * 3600 : unit === "m" ? val * 60 : val;
-    }
-
-    sessions.push({
-      key: match[0],
-      agentId,
-      lastMessageAge,
-    });
+  let agentDirs;
+  try {
+    agentDirs = await readdir(OPENCLAW_DATA_DIR);
+  } catch (err) {
+    console.warn(`⚠️  Cannot read agents dir (${OPENCLAW_DATA_DIR}):`, err.message);
+    return sessions;
   }
+
+  const now = Date.now();
+
+  await Promise.all(
+    agentDirs.map(async (agentId) => {
+      const sessionsPath = join(OPENCLAW_DATA_DIR, agentId, "sessions", "sessions.json");
+      try {
+        const raw = await readFile(sessionsPath, "utf8");
+        const data = JSON.parse(raw);
+        for (const [key, s] of Object.entries(data)) {
+          const updatedAt = s.updatedAt ? Number(s.updatedAt) : null;
+          const lastMessageAge = updatedAt ? Math.floor((now - updatedAt) / 1000) : 9999;
+          sessions.push({
+            key,
+            agentId,
+            lastMessageAge,
+            model: s.model || null,
+            channel: s.lastChannel || s.channel || null,
+          });
+        }
+      } catch {
+        // Agent may not have sessions yet — skip silently
+      }
+    })
+  );
+
   return sessions;
-}
-
-async function getSessionsList(statusText) {
-  // Parse sessions from the already-fetched status output
-  return parseSessionsFromStatus(statusText);
-}
-
-// parseSessionsText removed — now using parseSessionsFromStatus which parses
-// the `openclaw status` output directly (more reliable, shows ALL agents).
-
-/**
- * Fetch recent session history to extract currentTask.
- * Looks for task-related patterns in the last few messages.
- */
-/**
- * Get agent's current task based on role and activity.
- * Since `openclaw sessions history` doesn't work reliably,
- * we infer tasks from role + status + session activity.
- */
-function getAgentCurrentTask(agentId, sessions, status) {
-  const agentSessions = findAgentSessions(agentId, sessions);
-  const minAge = agentSessions.length > 0
-    ? Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999))
-    : 9999;
-
-  // If inactive, no current task
-  if (minAge > 600) return null;
-
-  // Role-based task inference from actual team activity
-  const ROLE_TASKS = {
-    pm:       ["Координация команды", "Распределение задач", "Статус-апдейт"],
-    dev:      ["Разработка фич", "Фикс багов", "Code push"],
-    analyst:  ["Анализ требований", "Сценарии тестирования", "Документация"],
-    devops:   ["Деплой и инфраструктура", "Docker / CI", "Мониторинг"],
-    qa:       ["Тестирование", "Ревью QA", "Написание тест-кейсов"],
-    techlead: ["Ревью PR", "Архитектурный анализ", "Фикс критичных багов"],
-  };
-
-  const tasks = ROLE_TASKS[agentId] || ["Работа"];
-  // Pick task based on status
-  if (status === "reviewing") return "Ревью PR";
-  if (status === "deploying") return "Деплой";
-  if (status === "testing") return "Тестирование";
-  if (status === "talking") return tasks[0];
-  if (status === "working") return tasks[1] || tasks[0];
-  if (status === "thinking") return tasks[2] || tasks[0];
-  return tasks[0];
 }
 
 // ---------------------------------------------------------------------------
@@ -221,43 +159,31 @@ function stabilizeStatus(agentId, newStatus) {
 }
 
 /**
- * Infer agent status from session data.
- * Maps real session activity to dashboard animation states.
- *
- * Status mapping:
- *   < 15s  → "talking"    (actively in conversation)
- *   < 60s  → "working"    (recently active)
- *   < 180s → "thinking"   (processing / waiting for response)
- *   < 600s → "idle"       (quiet but awake)
- *   < 1800s → "waiting"   (been a while)
- *   >= 1800s → "sleeping" (inactive 30+ minutes)
- *
- * Role-specific overrides:
- *   devops + recently active → "deploying"
- *   qa + recently active → "testing"
- *   techlead + recently active → "reviewing"
- */
-/**
  * Find sessions belonging to a specific agent.
- * Uses strict pattern: "agent:<id>:" to avoid false matches.
  */
 function findAgentSessions(agentId, sessions) {
   if (!sessions || !Array.isArray(sessions)) return [];
-  const pattern = `agent:${agentId}:`;
-  return sessions.filter(
-    (s) => s.agentId === agentId || s.key?.includes(pattern)
-  );
+  return sessions.filter((s) => s.agentId === agentId);
 }
 
-function inferStatus(agentId, sessions, heartbeatActive) {
-  // heartbeat "disabled" means polling is not configured, NOT that agent is down.
-  // Only use heartbeat as a HINT, never as sole indicator.
-  // Sessions are the primary activity source.
-
+/**
+ * Infer agent status from session timestamps.
+ *
+ * Status mapping:
+ *   < 15s   → "talking"    (actively in conversation)
+ *   < 60s   → "working"    (recently active)
+ *   < 180s  → "thinking"   (processing / waiting for response)
+ *   < 600s  → "idle"       (quiet but awake)
+ *   < 1800s → "waiting"    (been a while)
+ *   >= 1800s → "sleeping"  (inactive 30+ minutes)
+ *
+ * Role-specific overrides for recently active agents:
+ *   devops → "deploying", qa → "testing", techlead → "reviewing"
+ */
+function inferStatus(agentId, sessions) {
   const agentSessions = findAgentSessions(agentId, sessions);
 
-  // If no sessions found at all, default to "idle" (not sleeping)
-  // The agent process is running, just no recent activity tracked
+  // No sessions → idle (agent exists but hasn't been active)
   if (agentSessions.length === 0) return "idle";
 
   const minAge = Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999));
@@ -268,71 +194,58 @@ function inferStatus(agentId, sessions, heartbeatActive) {
     if (roleMap[agentId]) return roleMap[agentId];
   }
 
-  if (minAge < 15) return "talking";
-  if (minAge < 60) return "working";
-  if (minAge < 180) return "thinking";
-  if (minAge < 600) return "idle";
+  if (minAge < 15)   return "talking";
+  if (minAge < 60)   return "working";
+  if (minAge < 180)  return "thinking";
+  if (minAge < 600)  return "idle";
   if (minAge < 1800) return "waiting";
-  // Only sleeping after 30+ min inactivity in sessions
-  return heartbeatActive === false ? "idle" : "sleeping";
+  return "sleeping";
 }
 
 /**
- * Extract last message text from session data for an agent.
- * Prefers explicit lastMessage field, falls back to statusHint.
+ * Get agent's current task based on role and activity.
  */
-function getLastMessage(agentId, sessions) {
+function getAgentCurrentTask(agentId, sessions, status) {
   const agentSessions = findAgentSessions(agentId, sessions);
-  for (const s of agentSessions) {
-    if (s.lastMessage) return s.lastMessage;
-  }
-  return null;
-}
+  const minAge = agentSessions.length > 0
+    ? Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999))
+    : 9999;
 
-/**
- * Parse heartbeat info from openclaw status output.
- * Returns map: agentId → true/false/undefined
- * undefined = unknown (don't assume sleeping)
- * false = explicitly disabled
- * true = active
- */
-function parseHeartbeat(statusText) {
-  if (!statusText) return {};
-  const match = statusText.match(/Heartbeat\s*│\s*(.+)/);
-  if (!match) return {};
-  const result = {};
-  for (const part of match[1].split(",").map((s) => s.trim())) {
-    const m = part.match(/(.+?)\s*\((\w+)\)/);
-    if (m) {
-      const disabled = m[1].trim().toLowerCase() === "disabled";
-      result[m[2]] = disabled ? false : true;
-    }
-  }
-  return result;
+  if (minAge > 600) return null;
+
+  const ROLE_TASKS = {
+    pm:       ["Координация команды", "Распределение задач", "Статус-апдейт"],
+    dev:      ["Разработка фич", "Фикс багов", "Code push"],
+    analyst:  ["Анализ требований", "Сценарии тестирования", "Документация"],
+    devops:   ["Деплой и инфраструктура", "Docker / CI", "Мониторинг"],
+    qa:       ["Тестирование", "Ревью QA", "Написание тест-кейсов"],
+    techlead: ["Ревью PR", "Архитектурный анализ", "Фикс критичных багов"],
+  };
+
+  const tasks = ROLE_TASKS[agentId] || ["Работа"];
+  if (status === "reviewing")  return "Ревью PR";
+  if (status === "deploying")  return "Деплой";
+  if (status === "testing")    return "Тестирование";
+  if (status === "talking")    return tasks[0];
+  if (status === "working")    return tasks[1] || tasks[0];
+  if (status === "thinking")   return tasks[2] || tasks[0];
+  return tasks[0];
 }
 
 async function buildAgentStates() {
-  // Get status first, then parse sessions from the same output
-  const statusText = await getOpenClawStatus();
-  const sessions = await getSessionsList(statusText);
-
-  const heartbeats = parseHeartbeat(statusText);
+  const sessions = await readAgentSessions();
   const agents = [];
 
   for (const [id, pos] of Object.entries(AGENT_POSITIONS)) {
-    // heartbeats[id]: true=active, false=disabled, undefined=unknown
-    const heartbeatState = heartbeats[id]; // pass raw value, not coerced
-    const rawStatus = inferStatus(id, sessions, heartbeatState);
+    const rawStatus = inferStatus(id, sessions);
     const status = stabilizeStatus(id, rawStatus);
-    const lastMessage = getLastMessage(id, sessions);
     const currentTask = getAgentCurrentTask(id, sessions, status);
 
-    // Determine lastActiveAt from sessions
     const agentSessions = findAgentSessions(id, sessions);
     const minAge = agentSessions.length > 0
       ? Math.min(...agentSessions.map((s) => s.lastMessageAge ?? 9999))
       : null;
-    const lastActiveAt = minAge !== null && minAge < 3600
+    const lastActiveAt = minAge !== null && minAge < 86400
       ? new Date(Date.now() - minAge * 1000).toISOString()
       : null;
 
@@ -342,7 +255,7 @@ async function buildAgentStates() {
       role: AGENT_ROLES[id] || "Agent",
       status,
       currentTask,
-      lastMessage,
+      lastMessage: null,
       lastActiveAt,
       tileX: pos.tileX,
       tileY: pos.tileY,
@@ -380,10 +293,6 @@ async function getRecentEvents(count = 20) {
 }
 
 // ---------------------------------------------------------------------------
-// HTTP server (health endpoint) + WebSocket
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // GitHub API — real counters (PRs, issues, commits)
 // ---------------------------------------------------------------------------
 
@@ -395,7 +304,7 @@ const ghHeaders = {
 
 let cachedMetrics = null;
 let metricsLastFetch = 0;
-const METRICS_CACHE_MS = 60000; // Cache metrics for 60s
+const METRICS_CACHE_MS = 60000;
 
 async function fetchGitHub(path) {
   try {
@@ -414,11 +323,9 @@ async function getGitHubMetrics() {
     const r = repo.trim();
     if (!r) continue;
 
-    // Open PRs
     const prs = await fetchGitHub(`/repos/${r}/pulls?state=open&per_page=100`);
     if (prs) metrics.openPRs += prs.length;
 
-    // Merged PRs in last 24h
     const closedPrs = await fetchGitHub(`/repos/${r}/pulls?state=closed&sort=updated&direction=desc&per_page=30`);
     if (closedPrs) {
       const dayAgo = Date.now() - 86400000;
@@ -427,11 +334,9 @@ async function getGitHubMetrics() {
       ).length;
     }
 
-    // Open issues (bugs)
     const issues = await fetchGitHub(`/repos/${r}/issues?state=open&labels=bug&per_page=100`);
     if (issues) metrics.openIssues += issues.length;
 
-    // Closed issues in last 24h
     const closedIssues = await fetchGitHub(`/repos/${r}/issues?state=closed&sort=updated&direction=desc&per_page=30`);
     if (closedIssues) {
       const dayAgo = Date.now() - 86400000;
@@ -440,7 +345,6 @@ async function getGitHubMetrics() {
       ).length;
     }
 
-    // Commits in last 24h
     const since = new Date(Date.now() - 86400000).toISOString();
     const commits = await fetchGitHub(`/repos/${r}/commits?since=${since}&per_page=100`);
     if (commits) metrics.commits24h += commits.length;
@@ -455,14 +359,8 @@ async function getMetrics() {
     return cachedMetrics;
   }
 
-  const [ghMetrics, statusText] = await Promise.all([
-    getGitHubMetrics(),
-    getOpenClawStatus(),
-  ]);
-
-  // Parse active agents from status
-  const sessionsMatch = statusText?.match(/(\d+)\s*active/);
   const activeAgents = latestState.filter((a) => a.status !== "sleeping" && a.status !== "idle").length;
+  const ghMetrics = await getGitHubMetrics();
 
   cachedMetrics = {
     agents: {
@@ -471,7 +369,7 @@ async function getMetrics() {
     },
     github: ghMetrics,
     sessions: {
-      active: sessionsMatch ? parseInt(sessionsMatch[1], 10) : 0,
+      active: latestState.length,
     },
     timestamp: new Date().toISOString(),
   };
@@ -480,8 +378,7 @@ async function getMetrics() {
 }
 
 // ---------------------------------------------------------------------------
-// Real events from status changes (NOT mock/random)
-// Status changes are logged in Redis by the poll loop (logEvent)
+// HTTP server (health + REST) + WebSocket
 // ---------------------------------------------------------------------------
 
 const httpServer = createServer((req, res) => {
@@ -491,13 +388,13 @@ const httpServer = createServer((req, res) => {
       redis: redisConnected,
       agents: latestState.length,
       uptime: Math.floor(process.uptime()),
+      dataDir: OPENCLAW_DATA_DIR,
     };
     res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
     res.end(JSON.stringify(health));
     return;
   }
 
-  // Recent events endpoint
   if (req.url === "/events") {
     getRecentEvents().then((events) => {
       res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
@@ -506,10 +403,9 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
-  // Real metrics from GitHub + OpenClaw
   if (req.url === "/metrics") {
     getMetrics().then((metrics) => {
-      res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Origin": "*" });
+      res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
       res.end(JSON.stringify(metrics));
     });
     return;
@@ -549,7 +445,6 @@ wss.on("connection", async (ws) => {
     ws.send(JSON.stringify({ type: "agents", data: latestState }));
   }
 
-  // Send recent events and metrics on connect
   getRecentEvents(20).then((events) => {
     if (events.length > 0 && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: "events", data: events }));
@@ -584,22 +479,19 @@ async function poll() {
     latestState = await buildAgentStates();
     const payload = { type: "agents", data: latestState };
 
-    // Broadcast metrics every ~60s (every 6th poll at 10s interval)
     if (pollCount % 6 === 0) {
       getMetrics().then((m) => {
-        const metricsMsg = JSON.stringify({ type: "metrics", data: m });
-        broadcastWs(metricsMsg);
+        broadcastWs(JSON.stringify({ type: "metrics", data: m }));
       }).catch(() => {});
     }
     pollCount++;
+
     const payloadStr = JSON.stringify(payload);
 
-    // Cache in Redis
     if (redisConnected) {
       await redisCache.set(CACHE_KEY_AGENTS, payloadStr, { EX: CACHE_TTL });
       await redisPublisher.publish(CHANNEL_AGENTS, payloadStr);
     } else {
-      // No Redis — broadcast directly
       broadcastWs(payloadStr);
     }
 
@@ -622,7 +514,6 @@ async function poll() {
       previousStatuses[agent.id] = agent.status;
     }
 
-    // Broadcast events to all WS clients
     if (newEvents.length > 0) {
       broadcastWs(JSON.stringify({ type: "events", data: newEvents }));
     }
@@ -636,7 +527,8 @@ async function poll() {
 // ---------------------------------------------------------------------------
 
 console.log(`🎮 Dashboard BFF starting on http://localhost:${PORT}`);
-console.log(`   Polling OpenClaw every ${POLL_INTERVAL / 1000}s`);
+console.log(`   Polling data dir every ${POLL_INTERVAL / 1000}s`);
+console.log(`   OpenClaw data: ${OPENCLAW_DATA_DIR}`);
 console.log(`   Redis: ${REDIS_URL}`);
 
 await setupRedis();
