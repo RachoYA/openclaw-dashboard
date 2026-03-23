@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Scene, type SceneHandle } from "./engine/Scene";
+import { Scene, type SceneHandle } from "./engine/TopDownScene";
 import { AgentPanel } from "./ui/AgentPanel";
 import { ActivityFeed } from "./ui/ActivityFeed";
 import { Timeline } from "./ui/Timeline";

@@ -9,7 +9,7 @@
  * Uses square tiles: TILE_SIZE × TILE_SIZE pixels.
  */
 
-export const TILE_SIZE = 64;
+export const TILE_SIZE = 80;
 
 /**
  * @deprecated Alias for TILE_SIZE. Kept for import compatibility during migration.
