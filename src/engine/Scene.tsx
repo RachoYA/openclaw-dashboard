@@ -1,13 +1,12 @@
 import { useRef, useEffect, useCallback } from "react";
 import type { AgentState } from "@/data/types";
 import { tileToScreen, TILE_WIDTH, TILE_HEIGHT } from "./isometric";
-import { getSprite, SPRITE_SIZE } from "./SpriteGenerator";
 import { ANIMATIONS } from "./Animations";
 import { type MessageParticle, createParticle, updateParticle, drawParticle } from "./MessageParticle";
 import { OFFICE_ZONES, getZoneAt, drawZoneLabel } from "./OfficeZones";
 import {
   preloadSprites, drawAgentSprite, drawFurniture, drawActionIcon,
-  drawSpeechBubble, drawStatusIcon, SPRITE_W,
+  drawSpeechBubble, drawStatusIcon, SPRITE_W, SPRITE_H,
 } from "./SpriteLoader";
 
 const GRID_COLS = 10;
@@ -212,25 +211,24 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
       const isActive = agent.status !== "idle" && agent.status !== "sleeping";
       const bob = Math.sin(t * (isActive ? 0.004 : 0.002) + agent.tileX * 2) * (isActive ? 3 : 1.5);
       const breathe = Math.sin(t * 0.002 + agent.tileX * 1.5 + agent.tileY) * 2;
-      const agentY = sy - SPRITE_SIZE - 4 + bob + breathe;
+      const agentY = sy - SPRITE_H - 4 + bob + breathe;
       if (phase === "night" && agent.status === "sleeping") ctx.globalAlpha = Math.min(ctx.globalAlpha, 0.4);
 
       // Shadow
       ctx.beginPath(); ctx.ellipse(sx, sy + 2, 16, 6, 0, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fill();
 
-      // Sprite — try PNG, fall back to procedural
-      const drewPng = drawAgentSprite(ctx, agent.id, agent.status, sx, sy + 4, t, 1.2);
+      // Sprite — HD PNG with graceful fallback to colored rectangle
+      const drewPng = drawAgentSprite(ctx, agent.id, agent.status, sx, sy + 4, t, 1.0);
       if (!drewPng) {
-        const sprite = getSprite(agent.role);
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(sprite, sx - SPRITE_SIZE / 2, agentY, SPRITE_SIZE, SPRITE_SIZE);
-        ctx.imageSmoothingEnabled = true;
+        // Minimal fallback: colored silhouette
+        ctx.fillStyle = "#7f5af0";
+        ctx.fillRect(sx - 12, agentY + SPRITE_H - 24, 24, 24);
       }
 
       // Status dot + pulse
       const color = STATUS_COLORS[agent.status] || "#a7a9be";
-      const dotX = sx + (drewPng ? SPRITE_W * 0.6 : SPRITE_SIZE / 2) - 2;
+      const dotX = sx + SPRITE_W * 0.6 - 2;
       const dotY = agentY + 4;
       ctx.beginPath(); ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
@@ -347,12 +345,12 @@ export function Scene({ agents, onAgentClick, selectedZone, onZoneClick, sceneRe
     const offsetX = W / 2 + panRef.current.x;
     const offsetY = H / 2 - 50 + panRef.current.y;
 
-    // Hit test agents — match render position (sprite drawn at sy - SPRITE_SIZE - 4)
+    // Hit test agents — match render position (sprite drawn at sy - SPRITE_H - 4)
     const currentAgents = agentsRef.current;
     for (const agent of currentAgents) {
       const { x, y } = tileToScreen(agent.tileX, agent.tileY);
       const agentCenterX = x + offsetX;
-      const agentCenterY = y + offsetY - SPRITE_SIZE / 2 - 4; // match render offset
+      const agentCenterY = y + offsetY - SPRITE_H / 2 - 4; // match render offset
       if (Math.abs(mx - agentCenterX) < 36 && Math.abs(my - agentCenterY) < 40) {
         onAgentClickRef.current(agent.id);
         return;

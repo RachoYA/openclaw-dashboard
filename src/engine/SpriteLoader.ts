@@ -1,17 +1,20 @@
 /**
- * Sprite loader — loads PNG spritesheets from Lena's assets.
+ * Sprite loader — loads HD PNG spritesheets.
  * Replaces procedural canvas-drawn sprites (SpriteGenerator.ts).
  *
- * Spritesheets: 192x48 (6 frames × 32x48 each)
+ * Spritesheets: 384×96 (6 frames × 64×96 each)
  * Frames: 0=idle, 1=walk1, 2=walk2, 3=coding, 4=thinking, 5=sleeping
+ *
+ * Furniture: 2x resolution vs previous generation.
+ * atlas.json is the single source of truth for dimensions.
  */
 
 import type { AgentStatus } from "@/data/types";
 
 const BASE_PATH = import.meta.env.BASE_URL + "assets/";
 
-export const SPRITE_W = 32;
-export const SPRITE_H = 48;
+export const SPRITE_W = 64;
+export const SPRITE_H = 96;
 export const FRAME_COUNT = 6;
 
 /** Map agent ID → spritesheet file */
@@ -41,24 +44,24 @@ const STATUS_FRAME_MAP: Record<AgentStatus, number> = {
 /** Walk animation frames for movement */
 const WALK_FRAMES = [1, 2];
 
-/** Furniture sprite map */
+/** Furniture sprite map — HD (2x) dimensions */
 const FURNITURE_SPRITE_MAP: Record<string, { file: string; w: number; h: number }> = {
-  "📋": { file: "sprites/furniture/kanban_board.png", w: 64, h: 48 },
-  "📅": { file: "sprites/furniture/whiteboard.png", w: 48, h: 40 },
-  "🪴": { file: "sprites/furniture/plant.png", w: 16, h: 32 },
-  "🖥️": { file: "sprites/furniture/monitor.png", w: 24, h: 32 },
-  "🗄️": { file: "sprites/furniture/server_rack.png", w: 32, h: 64 },
-  "⌨️": { file: "sprites/furniture/monitor.png", w: 24, h: 32 },
-  "📊": { file: "sprites/furniture/whiteboard.png", w: 48, h: 40 },
-  "📑": { file: "sprites/furniture/bookshelf.png", w: 48, h: 48 },
-  "🔬": { file: "sprites/furniture/bookshelf.png", w: 48, h: 48 },
-  "☕": { file: "sprites/furniture/coffee_machine.png", w: 24, h: 32 },
-  "🛋️": { file: "sprites/furniture/sofa.png", w: 64, h: 32 },
-  "📺": { file: "sprites/furniture/monitor.png", w: 24, h: 32 },
-  "🧪": { file: "sprites/furniture/bookshelf.png", w: 48, h: 48 },
-  "🐛": { file: "sprites/furniture/bug_board.png", w: 48, h: 48 },
-  "🚀": { file: "sprites/furniture/printer.png", w: 32, h: 24 },
-  "🔒": { file: "sprites/furniture/server_rack.png", w: 32, h: 64 },
+  "📋": { file: "sprites/furniture/kanban_board.png",   w: 128, h: 96  },
+  "📅": { file: "sprites/furniture/whiteboard.png",     w: 96,  h: 80  },
+  "🪴": { file: "sprites/furniture/plant.png",          w: 32,  h: 64  },
+  "🖥️": { file: "sprites/furniture/monitor.png",       w: 48,  h: 64  },
+  "🗄️": { file: "sprites/furniture/server_rack.png",   w: 64,  h: 128 },
+  "⌨️": { file: "sprites/furniture/monitor.png",       w: 48,  h: 64  },
+  "📊": { file: "sprites/furniture/whiteboard.png",     w: 96,  h: 80  },
+  "📑": { file: "sprites/furniture/bookshelf.png",      w: 96,  h: 96  },
+  "🔬": { file: "sprites/furniture/bookshelf.png",      w: 96,  h: 96  },
+  "☕": { file: "sprites/furniture/coffee_machine.png", w: 48,  h: 64  },
+  "🛋️": { file: "sprites/furniture/sofa.png",          w: 128, h: 64  },
+  "📺": { file: "sprites/furniture/monitor.png",        w: 48,  h: 64  },
+  "🧪": { file: "sprites/furniture/bookshelf.png",      w: 96,  h: 96  },
+  "🐛": { file: "sprites/furniture/bug_board.png",      w: 96,  h: 96  },
+  "🚀": { file: "sprites/furniture/printer.png",        w: 64,  h: 48  },
+  "🔒": { file: "sprites/furniture/server_rack.png",    w: 64,  h: 128 },
 };
 
 /** Action icon map */
