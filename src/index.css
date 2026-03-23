@@ -1,0 +1,10 @@
+/* Global styles for openclaw-dashboard */
+
+/* Hide scrollbar visually but keep functionality (cross-browser) */
+.hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* WebKit (Chrome, Safari, Edge) */
+}

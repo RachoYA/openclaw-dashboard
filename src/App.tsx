@@ -13,6 +13,9 @@ import { useIsMobile } from "./hooks/useIsMobile";
 import { useAgentStore } from "./data/AgentStore";
 import { startWSClient, stopWSClient } from "./data/ws-client";
 
+/** Duration (ms) of the panel slide-out animation — must match the CSS transition. */
+const CLOSE_ANIMATION_MS = 300;
+
 export function App() {
   const agents = useAgentStore((s) => s.agents);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -33,13 +36,13 @@ export function App() {
 
   const handleClose = () => {
     setPanelOpen(false);
-    setTimeout(() => setSelectedId(null), 300); // wait for slide-out animation
+    setTimeout(() => setSelectedId(null), CLOSE_ANIMATION_MS); // wait for slide-out animation
   };
 
   const selectedAgent = selectedId ? agents.find((a) => a.id === selectedId) ?? null : null;
 
   return (
-    <div style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "#f5f5f7" }}>
+    <div style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "#0f0e17" }}>
       {/* Fullscreen canvas */}
       <Scene
         agents={agents}
@@ -60,7 +63,7 @@ export function App() {
         onZoomOut={() => sceneRef.current?.zoomOut()}
         onReset={() => sceneRef.current?.zoomReset()}
       />
-      <ActivityFeed compact={isMobile} />
+      <ActivityFeed />
 
       {/* Agent detail panel */}
       {isMobile ? (

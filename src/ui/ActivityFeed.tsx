@@ -15,7 +15,7 @@ const EVENT_ICONS: Record<string, string> = {
   review: "🔍",
 };
 
-export function ActivityFeed({ compact: _compact }: { compact?: boolean }) {
+export function ActivityFeed() {
   const events = useActivityStore((s) => s.events);
   const isMobile = useIsMobile();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -78,7 +78,7 @@ export function ActivityFeed({ compact: _compact }: { compact?: boolean }) {
         <span>📡 Activity Feed</span>
         <span style={{ fontSize: "10px", color: "#525272" }}>{events.length} events</span>
       </div>
-      <div style={listStyle}>
+      <div style={listStyle} className="hide-scrollbar">
         {recent.length === 0 && (
           <div style={{ color: "#525272", fontSize: "11px", padding: "8px" }}>
             Ожидание событий...
