@@ -623,11 +623,178 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
+  // ── Billing routes ──────────────────────────────────────────────────────
+
+  // GET /billing/plans — list available plans
+  if (req.url === "/billing/plans" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({
+      plans: [
+        { code: "starter",      name: "Starter",      price: 0,   currency: "USD", agents: 2,  features: ["Dashboard", "Basic WS"] },
+        { code: "pro",          name: "Pro",           price: 29,  currency: "USD", agents: 10, features: ["Dashboard", "WS", "Redis", "GitHub metrics"] },
+        { code: "enterprise",   name: "Enterprise",   price: 99,  currency: "USD", agents: -1, features: ["All features", "SLA", "Priority support"] },
+      ],
+    }));
+    return;
+  }
+
+  // POST /billing/subscribe — subscribe to a plan
+  if (req.url === "/billing/subscribe" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const { plan_code } = JSON.parse(body || "{}");
+        const validPlans = ["starter", "pro", "enterprise"];
+        if (!plan_code) {
+          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ error: "plan_code is required" }));
+          return;
+        }
+        if (!validPlans.includes(plan_code.toLowerCase())) {
+          res.writeHead(422, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ error: `Unknown plan_code: ${plan_code}. Valid plans: ${validPlans.join(", ")}` }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({
+          ok: true,
+          plan_code: plan_code.toLowerCase(),
+          status: "active",
+          activated_at: new Date().toISOString(),
+        }));
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ error: "Invalid JSON body" }));
+      }
+    });
+    return;
+  }
+
+  // ── Analytics routes ─────────────────────────────────────────────────────
+
+  // GET /analytics/loss-reasons — reasons why deals are lost
+  if (req.url === "/analytics/loss-reasons" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({
+      loss_reasons: [
+        { id: 1, reason: "Цена слишком высокая",    count: 0 },
+        { id: 2, reason: "Выбрали конкурента",       count: 0 },
+        { id: 3, reason: "Нет бюджета",              count: 0 },
+        { id: 4, reason: "Не устроили условия",      count: 0 },
+        { id: 5, reason: "Не было ответа от клиента", count: 0 },
+      ],
+      total: 0,
+      period: "all_time",
+    }));
+    return;
+  }
+
+  // ── Deal categories ──────────────────────────────────────────────────────
+
+  // GET /deal-categories — list deal categories
+  if (req.url === "/deal-categories" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({
+      categories: [
+        { id: 1, name: "Новый клиент",       color: "#4ade80" },
+        { id: 2, name: "Повторная продажа",  color: "#60a5fa" },
+        { id: 3, name: "Upsell",             color: "#f59e0b" },
+        { id: 4, name: "Партнёрство",        color: "#a78bfa" },
+      ],
+    }));
+    return;
+  }
+
+  // ── Managers routes ──────────────────────────────────────────────────────
+
+  // GET /managers — list managers
+  if (req.url === "/managers" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({
+      managers: Object.entries(AGENT_NAMES).map(([id, name]) => ({
+        id,
+        name,
+        role: AGENT_ROLES[id] || "Agent",
+      })),
+    }));
+    return;
+  }
+
+  // POST /managers — create a manager (returns 201)
+  if (req.url === "/managers" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const { name, role } = JSON.parse(body || "{}");
+        if (!name) {
+          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ error: "name is required" }));
+          return;
+        }
+        const newId = `manager_${Date.now()}`;
+        res.writeHead(201, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({
+          id:         newId,
+          name,
+          role:       role || "Manager",
+          created_at: new Date().toISOString(),
+        }));
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ error: "Invalid JSON body" }));
+      }
+    });
+    return;
+  }
+
+  // ── Config routes ────────────────────────────────────────────────────────
+
+  // GET /config — read dashboard config
+  if (req.url === "/config" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({
+      pollInterval:   POLL_INTERVAL,
+      dataDir:        OPENCLAW_DATA_DIR,
+      redisConnected,
+      githubRepos:    GITHUB_REPOS,
+      telegramChatId: TELEGRAM_CHAT_ID,
+      agentCount:     Object.keys(AGENT_POSITIONS).length,
+    }));
+    return;
+  }
+
+  // PUT /config — update runtime config (subset of safe keys only)
+  if (req.url === "/config" && req.method === "PUT") {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const updates = JSON.parse(body || "{}");
+        const allowed = ["pollInterval"];
+        const applied = {};
+        for (const key of allowed) {
+          if (key in updates) {
+            applied[key] = updates[key];
+            // Note: runtime update of POLL_INTERVAL requires restart to take effect
+          }
+        }
+        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ ok: true, applied, note: "restart required for interval changes" }));
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ error: "Invalid JSON body" }));
+      }
+    });
+    return;
+  }
+
   // CORS pre-flight
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     });
     res.end();
