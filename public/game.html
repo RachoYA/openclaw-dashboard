@@ -169,6 +169,7 @@
   }
   .agent:hover { transform: scale(1.1); }
   .agent:hover .agent-circle { box-shadow: 0 0 20px var(--glow-color, #4ade80); }
+  .agent.offline:hover .agent-circle { box-shadow: none; }
   .agent.selected .agent-circle {
     box-shadow: 0 0 0 3px white, 0 0 20px var(--glow-color, #4ade80);
   }
@@ -596,7 +597,7 @@
           <div class="monitor"><div class="monitor-glow" style="background:#e9456055"></div></div>
         </div>
         <div class="agent active" id="agent-pm" data-id="pm"
-             style="--glow-color:#4ade80; top:14px; left:50%; transform:translateX(-50%);"
+             style="--glow-color:#4ade80; top:14px; left:50%; translate: -50% 0;"
              onclick="selectAgent('pm')">
           <div class="agent-circle" style="background:#4ade8022;">
             🤖
@@ -620,7 +621,7 @@
           <div class="monitor"><div class="monitor-glow" style="background:#fbbf2455"></div></div>
         </div>
         <div class="agent working" id="agent-analyst" data-id="analyst"
-             style="--glow-color:#fbbf24; top:14px; left:50%; transform:translateX(-50%);"
+             style="--glow-color:#fbbf24; top:14px; left:50%; translate: -50% 0;"
              onclick="selectAgent('analyst')">
           <div class="agent-circle" style="background:#fbbf2422;">
             📊
@@ -638,7 +639,7 @@
           <div class="monitor"><div class="monitor-glow" style="background:#3b82f655"></div></div>
         </div>
         <div class="agent active" id="agent-dev" data-id="dev"
-             style="--glow-color:#4ade80; top:14px; left:50%; transform:translateX(-50%);"
+             style="--glow-color:#4ade80; top:14px; left:50%; translate: -50% 0;"
              onclick="selectAgent('dev')">
           <div class="agent-circle" style="background:#4ade8022;">
             💻
@@ -662,7 +663,7 @@
           <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
         </div>
         <div class="agent offline" id="agent-qa" data-id="qa"
-             style="top:14px; left:50%; transform:translateX(-50%);"
+             style="top:14px; left:50%; translate: -50% 0;"
              onclick="selectAgent('qa')">
           <div class="agent-circle" style="background:#55555522;">
             🔍
@@ -680,7 +681,7 @@
           <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
         </div>
         <div class="agent offline" id="agent-techlead" data-id="techlead"
-             style="top:14px; left:50%; transform:translateX(-50%);"
+             style="top:14px; left:50%; translate: -50% 0;"
              onclick="selectAgent('techlead')">
           <div class="agent-circle" style="background:#55555522;">
             ⚙️
@@ -704,7 +705,7 @@
           <div class="monitor"><div class="monitor-glow" style="background:#55555533"></div></div>
         </div>
         <div class="agent offline" id="agent-devops" data-id="devops"
-             style="top:14px; left:50%; transform:translateX(-50%);"
+             style="top:14px; left:50%; translate: -50% 0;"
              onclick="selectAgent('devops')">
           <div class="agent-circle" style="background:#55555522;">
             🛠️
@@ -1309,8 +1310,20 @@ function scheduleFeedEvent() {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
+// Initialize header counters from AGENTS data (not hardcoded)
+(function initCounters() {
+  const agents = Object.values(AGENTS);
+  const onlineCount = agents.filter(a => a.status !== 'offline').length;
+  const taskCount = agents.filter(a => a.currentTask).length;
+  const onlineEl = document.getElementById('online-count');
+  const taskEl = document.getElementById('task-count');
+  if (onlineEl) onlineEl.textContent = onlineCount;
+  if (taskEl) taskEl.textContent = taskCount;
+})();
+
 // add 2 initial events immediately
-addFeedItem('🏭', '<strong>Фабрика</strong>: дашборд запущен — 3 агента онлайн');
+const _onlineInit = Object.values(AGENTS).filter(a => a.status !== 'offline').length;
+addFeedItem('🏭', `<strong>Фабрика</strong>: дашборд запущен — ${_onlineInit} агента онлайн`);
 addFeedItem('🤖', '<strong>Артём</strong>: спринт 12 начат — задачи распределены');
 
 setTimeout(scheduleFeedEvent, 2000);
